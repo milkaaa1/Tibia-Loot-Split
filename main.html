@@ -1,1 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tibia Loot Split — Multi‑Session</title>
+  <style>
+    :root{
+      --bg:#0b0f14; --panel:#0f1520; --muted:#a9b1bb; --text:#e6edf3; --accent:#38bdf8; --good:#22c55e; --bad:#ef4444; --warn:#f59e0b; --border:#243042;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+    h1{font-weight:700;margin:16px 0 8px;font-size:20px}
+    .container{max-width:1100px;margin:0 auto;padding:16px}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    textarea{width:100%;min-height:220px;background:#0b1220;border:1px solid var(--border);border-radius:12px;color:var(--text);padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .row > *{flex:1}
+    button{background:linear-gradient(180deg,#1e293b,#0b1220);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:12px;cursor:pointer}
+    button:hover{border-color:#3b82f6}
+    .btn-accent{background:linear-gradient(180deg,#06b6d4,#0284c7);border-color:transparent}
+    .btn-ghost{background:transparent;border:1px dashed var(--border)}
+    .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .muted{color:var(--muted)}
+    .grid{display:grid;gap:10px}
+    .grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:#0b1220;color:var(--muted);font-size:12px}
+    table{width:100%;border-collapse:collapse;background:#0b1220;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+    th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:right}
+    th:first-child, td:first-child{text-align:left}
+    thead th{position:sticky;top:0;background:#0d1422;z-index:1}
+    .good{color:var(--good)}
+    .bad{color:var(--bad)}
+    .warn{color:var(--warn)}
+    details{border:1px solid var(--border);border-radius:12px;background:#0b1220}
+    summary{cursor:pointer;padding:10px 12px;font-weight:600}
+    .notice{padding:10px 12px;border-left:4px solid var(--warn);background:#1a1420;border-radius:10px}
+    .footer{opacity:.7;margin-top:18px}
+    .small{font-size:12px}
+    .right{float:right}
+    .nowrap{white-space:nowrap}
+    .spacer{height:8px}
+    code.k{background:#101827;border:1px solid var(--border);padding:2px 6px;border-radius:8px}
+    .hl{background:rgba(56,189,248,.1);padding:2px 6px;border:1px solid rgba(56,189,248,.25);border-radius:8px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🗡️ Tibia Loot Split — Multi‑Session</h1>
+    <div class="muted">Paste one or more Hunt Analyzer blocks. I'll parse, sum, and compute a fair settlement in single consolidated transfers.</div>
+    <div class="spacer"></div>
 
+    <div class="card">
+      <div class="toolbar">
+        <button id="analyze" class="btn-accent">Analyze</button>
+        <button id="clear" class="btn-ghost">Clear</button>
+        <button id="sample" class="btn-ghost">Load sample</button>
+        <label class="pill"><input type="checkbox" id="normalize" checked> Normalize names (case‑insensitive)</label>
+        <label class="pill"><input type="checkbox" id="strict"> Strict totals check</label>
+        <span class="pill">Version 1.0</span>
+      </div>
+      <div class="spacer"></div>
+      <textarea id="paste" placeholder="Paste multiple sessions here..."></textarea>
+    </div>
+
+    <div id="output" class="grid" style="margin-top:12px; gap:12px"></div>
+
+    <div class="footer small muted">Tip: the settlement uses each player's reported <span class="hl">Balance</span> from your logs. Debtors (negative) pay creditors (positive). Multiple sessions are aggregated so you can settle once.</div>
+  </div>
+
+<script>
+(function(){
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => Array.from(document.querySelectorAll(sel));
+  const by = (k,dir=1) => (a,b)=> a[k]===b[k]?0: (a[k]>b[k]?dir:-dir);
+  const num = s => { // parse 3,993,939 or -492,481
+    if(s==null) return 0;
+    const m = (s+"").replace(/[^0-9\-]/g, "");
+    if(!m || m === "-") return 0;
+    return parseInt(m,10);
+  };
+  const fmt = n => Number(n||0).toLocaleString('en-US');
+  const durToHours = hstr => {
+    // Accept HH:MMh or H:MMh or mm:ss? We'll support HH:MMh (from Tibia)
+    if(!hstr) return 0;
+    const m = (hstr+"").match(/(\d{1,2}):(\d{2})/);
+    if(!m) return 0;
+    const hh = parseInt(m[1],10)||0; const mm = parseInt(m[2],10)||0;
+    return hh + mm/60;
+  };
+
+  function splitSessions(raw){
+    // Split by "Session data:" blocks
+    const blocks = [];
+    const regex = /Session data:[\s\S]*?(?=\n\s*Session data:|\u0000|$)/g;
+    let match;
+    while((match = regex.exec(raw))){
+      blocks.push(match[0].trim());
+    }
+    return blocks;
+  }
+
+  function parseSession(text, index, opts){
+    const lines = text.split(/\r?\n/).map(l=>l.replace(/\t/g,'  '));
+    const session = { index, from:null, to:null, durationHours:0, lootType:null, group:{loot:0,supplies:0,balance:0}, players:[], warnings:[] };
+
+    // Dates
+    const mDates = text.match(/Session data:\s*From\s*(.*?)\s*to\s*(.*)/i);
+    if(mDates){ session.from = mDates[1].trim(); session.to = mDates[2].split(/\r?\n/)[0].trim(); }
+    const mDur = text.match(/\bSession:\s*([0-9]{1,2}:[0-9]{2})h/i);
+    if(mDur){ session.durationHours = durToHours(mDur[1]); }
+
+    const mLootType = text.match(/Loot Type:\s*([^\r\n]+)/i);
+    if(mLootType){ session.lootType = mLootType[1].trim(); }
+
+    // Group totals (first occurrence after Loot Type)
+    const mGroupLoot = text.match(/\n\s*Loot:\s*([\d,\.]+)/);
+    const mGroupSupp = text.match(/\n\s*Supplies:\s*([\d,\.]+)/);
+    const mGroupBal  = text.match(/\n\s*Balance:\s*([\-\d,\.]+)/);
+    if(mGroupLoot) session.group.loot = num(mGroupLoot[1]);
+    if(mGroupSupp) session.group.supplies = num(mGroupSupp[1]);
+    if(mGroupBal)  session.group.balance = num(mGroupBal[1]);
+
+    // Parse players: name line is non-indented and not starting with known headers
+    const headerWords = /^(Session data:|Session:|Loot Type:|Loot:|Supplies:|Balance:|Damage:|Healing:)/i;
+    let i=0; while(i<lines.length){
+      const line = lines[i].trimEnd();
+      const raw = lines[i];
+      if(raw && !/^\s/.test(raw) && !headerWords.test(line)){
+        let name = line.trim();
+        name = name.replace(/\s*\(Leader\)\s*$/i,'');
+        const displayName = name;
+        if(opts.normalize) name = normalizeName(name);
+        const p = { key:name, displayName, loot:0,supplies:0,balance:0,damage:0,healing:0 };
+        i++;
+        // consume indented details
+        while(i<lines.length && /^\s/.test(lines[i])){
+          const sub = lines[i].trim();
+          const [k,v] = sub.split(/:\s*/);
+          if(/Loot/i.test(k)) p.loot = num(v);
+          else if(/Supplies/i.test(k)) p.supplies = num(v);
+          else if(/Balance/i.test(k)) p.balance = num(v);
+          else if(/Damage/i.test(k)) p.damage = num(v);
+          else if(/Healing/i.test(k)) p.healing = num(v);
+          i++;
+        }
+        session.players.push(p);
+        continue; // don't i++ here
+      }
+      i++;
+    }
+
+    // Cross-check
+    const sumBalances = session.players.reduce((a,b)=>a + (b.balance||0), 0);
+    if(session.group.balance && Math.abs(sumBalances - session.group.balance) > 5){
+      session.warnings.push(`Sum of player balances (${fmt(sumBalances)}) differs from group Balance (${fmt(session.group.balance)})`);
+      if(opts.strict) session.error = true;
+    }
+    return session;
+  }
+
+  function normalizeName(n){
+    return (n||'').trim().toLowerCase();
+  }
+
+  function aggregate(sessions){
+    const agg = new Map(); // key -> stats
+    const presenceHours = new Map(); // key -> total hours they were in sessions
+    const byKey = (key) => {
+      if(!agg.has(key)) agg.set(key, { key, displayName:key, totalBalance:0, totalLoot:0, totalSupplies:0, totalDamage:0, totalHealing:0, sessions:0 });
+      return agg.get(key);
+    };
+    const pres = (key) => { presenceHours.set(key, (presenceHours.get(key)||0)); return presenceHours; };
+
+    sessions.forEach(s=>{
+      s.players.forEach(p=>{
+        const a = byKey(p.key);
+        a.displayName = p.displayName; // prefer last seen casing
+        a.totalBalance += p.balance||0;
+        a.totalLoot += p.loot||0;
+        a.totalSupplies += p.supplies||0;
+        a.totalDamage += p.damage||0;
+        a.totalHealing += p.healing||0;
+        a.sessions += 1;
+        presenceHours.set(p.key, (presenceHours.get(p.key)||0) + (s.durationHours||0));
+      });
+    });
+
+    const rows = Array.from(agg.values()).map(r=>{
+      const hours = presenceHours.get(r.key)||0;
+      return { ...r, hours, perHour: hours>0 ? r.totalBalance / hours : 0 };
+    }).sort((a,b)=> (b.totalBalance - a.totalBalance) || a.displayName.localeCompare(b.displayName));
+
+    return { rows, presenceHours };
+  }
+
+  function settle(netRows){
+    const creditors = []; // {name, amt}
+    const debtors = [];
+    netRows.forEach(r=>{
+      const amt = Math.round(r.totalBalance);
+      if(amt>0) creditors.push({ name:r.displayName, amt });
+      else if(amt<0) debtors.push({ name:r.displayName, amt: -amt });
+    });
+    creditors.sort((a,b)=>b.amt-a.amt);
+    debtors.sort((a,b)=>b.amt-a.amt); // largest debtor first
+
+    const tx = [];
+    let ci=0, di=0;
+    while(ci<creditors.length && di<debtors.length){
+      const c = creditors[ci];
+      const d = debtors[di];
+      const pay = Math.min(c.amt, d.amt);
+      if(pay>0){
+        tx.push({ from:d.name, to:c.name, amount:pay });
+        c.amt -= pay;
+        d.amt -= pay;
+      }
+      if(c.amt<=0) ci++;
+      if(d.amt<=0) di++;
+    }
+
+    const sumNet = netRows.reduce((a,b)=>a + Math.round(b.totalBalance),0);
+    const residue = Math.round(sumNet);
+    return { transactions: tx, residue };
+  }
+
+  function render(sessions, agg, settlement){
+    const out = $('#output');
+    out.innerHTML = '';
+
+    // Summary card
+    const totalSessions = sessions.length;
+    const totalHours = sessions.reduce((a,b)=>a+(b.durationHours||0),0);
+    const totalGroupBalance = sessions.reduce((a,b)=>a+(b.group.balance||0),0);
+
+    const sumCheck = agg.rows.reduce((a,b)=>a + b.totalBalance,0);
+    const warnSum = Math.abs(sumCheck - totalGroupBalance) > 5;
+
+    const summary = document.createElement('div');
+    summary.className = 'card';
+    summary.innerHTML = `
+      <div class="row">
+        <div>
+          <div class="muted">Sessions</div>
+          <div style="font-size:22px;font-weight:700">${totalSessions}</div>
+        </div>
+        <div>
+          <div class="muted">Total Hours</div>
+          <div style="font-size:22px;font-weight:700">${totalHours.toFixed(2)}</div>
+        </div>
+        <div>
+          <div class="muted">Group Balance (sum)</div>
+          <div style="font-size:22px;font-weight:700" class="${totalGroupBalance>=0?'good':'bad'}">${fmt(totalGroupBalance)}</div>
+        </div>
+        <div>
+          <div class="muted">Net (from players)</div>
+          <div style="font-size:22px;font-weight:700" class="${warnSum?'warn':''}">${fmt(Math.round(sumCheck))}</div>
+        </div>
+        <div>
+          <div class="muted">Players (unique)</div>
+          <div style="font-size:22px;font-weight:700">${agg.rows.length}</div>
+        </div>
+      </div>
+      ${warnSum?`<div class="spacer"></div><div class="notice">Heads up: Sum of players (${fmt(Math.round(sumCheck))}) != sum of session balances (${fmt(totalGroupBalance)}). I used player balances for settlement.</div>`:''}
+    `;
+    out.appendChild(summary);
+
+    // Aggregated per-person
+    const per = document.createElement('div');
+    per.className = 'card';
+    per.innerHTML = `<div class="toolbar"><strong>Aggregated — per person</strong><span class="muted">(across all sessions)</span><span class="right small"><button id="copy-agg">Copy CSV</button></span></div>`;
+
+    const tbl = document.createElement('table');
+    tbl.innerHTML = `
+      <thead><tr>
+        <th>Player</th><th class="nowrap">Sessions</th><th class="nowrap">Hours</th>
+        <th>Loot</th><th>Supplies</th><th>Balance</th><th>Per hour</th>
+      </tr></thead>
+      <tbody>
+        ${agg.rows.map(r=>`
+          <tr>
+            <td>${escapeHtml(r.displayName)}</td>
+            <td>${r.sessions}</td>
+            <td>${r.hours.toFixed(2)}</td>
+            <td>${fmt(r.totalLoot)}</td>
+            <td>${fmt(r.totalSupplies)}</td>
+            <td class="${r.totalBalance>=0?'good':'bad'}">${fmt(r.totalBalance)}</td>
+            <td class="${r.perHour>=0?'good':'bad'}">${fmt(Math.round(r.perHour))}</td>
+          </tr>`).join('')}
+      </tbody>
+    `;
+    per.appendChild(tbl);
+    out.appendChild(per);
+
+    per.querySelector('#copy-agg').addEventListener('click', ()=>{
+      const header = ['Player','Sessions','Hours','Loot','Supplies','Balance','PerHour'];
+      const rows = agg.rows.map(r=>[r.displayName,r.sessions,r.hours.toFixed(2),r.totalLoot,r.totalSupplies,r.totalBalance,Math.round(r.perHour)]);
+      copyCSV([header,...rows]);
+    });
+
+    // Settlement
+    const set = document.createElement('div');
+    set.className = 'card';
+    set.innerHTML = `<div class="toolbar"><strong>Final Settlement — single transactions</strong><span class="muted">Debtors pay creditors</span><span class="right small"><button id="copy-set">Copy list</button></span></div>`;
+
+    const tx = settlement.transactions;
+    const hasTx = tx.length>0;
+    set.innerHTML += hasTx ? `
+      <table>
+        <thead><tr><th>From</th><th>To</th><th>Amount</th></tr></thead>
+        <tbody>
+          ${tx.map(t=>`<tr><td>${escapeHtml(t.from)}</td><td>${escapeHtml(t.to)}</td><td>${fmt(t.amount)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    ` : `<div class="muted">Nothing to settle — everyone is even.</div>`;
+
+    if(settlement.residue!==0){
+      set.innerHTML += `<div class="spacer"></div><div class="notice">Residual net after rounding: ${fmt(settlement.residue)} gp. If non‑zero, adjust the smallest transaction by this amount.</div>`
+    }
+
+    out.appendChild(set);
+
+    set.querySelector('#copy-set')?.addEventListener('click', ()=>{
+      const lines = tx.map(t=>`${t.from} -> ${t.to}: ${t.amount.toLocaleString('en-US')} gp`);
+      navigator.clipboard.writeText(lines.join('\n')).then(()=>toast('Copied settlement!'));
+    });
+
+    // Per‑session details
+    sessions.forEach(s=>{
+      const d = document.createElement('div');
+      d.className = 'card';
+      const title = `Session #${String(s.index).padStart(2,'0')} • ${s.from?escapeHtml(s.from):''} → ${s.to?escapeHtml(s.to):''} • ${s.durationHours.toFixed(2)}h`;
+      d.innerHTML = `<div class="toolbar"><strong>${title}</strong><span class="pill">Loot Type: ${escapeHtml(s.lootType||'-')}</span><span class="pill">Group Bal: <span class="${s.group.balance>=0?'good':'bad'}">${fmt(s.group.balance)}</span></span></div>`;
+      if(s.warnings.length){
+        d.innerHTML += s.warnings.map(w=>`<div class="spacer"></div><div class="notice">${escapeHtml(w)}</div>`).join('');
+      }
+      const t = document.createElement('table');
+      t.innerHTML = `
+        <thead><tr><th>Player</th><th>Loot</th><th>Supplies</th><th>Balance</th><th>Damage</th><th>Healing</th></tr></thead>
+        <tbody>
+          ${s.players.sort(by('displayName')).map(p=>`<tr>
+            <td>${escapeHtml(p.displayName)}</td>
+            <td>${fmt(p.loot)}</td><td>${fmt(p.supplies)}</td>
+            <td class="${p.balance>=0?'good':'bad'}">${fmt(p.balance)}</td>
+            <td>${fmt(p.damage)}</td><td>${fmt(p.healing)}</td>
+          </tr>`).join('')}
+        </tbody>`;
+      d.appendChild(t);
+      out.appendChild(d);
+    });
+  }
+
+  function escapeHtml(s){
+    return (s+"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+  }
+
+  function copyCSV(rows){
+    const csv = rows.map(r=>r.map(v=>{
+      const s = (v==null?'':String(v));
+      return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+    }).join(','))
+    .join('\n');
+    navigator.clipboard.writeText(csv).then(()=>toast('Copied CSV!'));
+  }
+
+  function toast(msg){
+    const t = document.createElement('div');
+    t.textContent = msg;
+    Object.assign(t.style, {position:'fixed',bottom:'16px',right:'16px',padding:'10px 12px',background:'#0d1422',border:'1px solid #284166',borderRadius:'10px',boxShadow:'0 10px 24px rgba(0,0,0,.35)',zIndex:9999});
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(), 1400);
+  }
+
+  function analyze(){
+    const raw = $('#paste').value || '';
+    if(!raw.trim()){ toast('Paste some session data first'); return; }
+    const blocks = splitSessions(raw);
+    if(blocks.length===0){ toast('No sessions found'); return; }
+    const opts = { normalize: $('#normalize').checked, strict: $('#strict').checked };
+    const sessions = blocks.map((b,i)=>parseSession(b, i+1, opts)).filter(s=>!s.error);
+    if(sessions.length===0){ toast('All sessions failed strict checks. Disable Strict?'); return; }
+    const agg = aggregate(sessions);
+    const settlement = settle(agg.rows);
+    render(sessions, agg, settlement);
+    try{ localStorage.setItem('tibia-loot-split-last', raw); }catch(e){}
+  }
+
+  $('#analyze').addEventListener('click', analyze);
+  $('#clear').addEventListener('click', ()=>{ $('#paste').value=''; $('#output').innerHTML=''; try{localStorage.removeItem('tibia-loot-split-last')}catch(e){} });
+  $('#sample').addEventListener('click', ()=>{
+    $('#paste').value = SAMPLE.trim(); analyze();
+  });
+
+  // Restore last input if present
+  try{
+    const last = localStorage.getItem('tibia-loot-split-last');
+    if(last) $('#paste').value = last;
+  }catch(e){}
+
+  const SAMPLE = `Session data: From 2025-09-21, 20:20:23 to 2025-09-21, 21:48:34
+Session: 01:28h
+Loot Type: Leader
+Loot: 3,993,939
+Supplies: 1,558,773
+Balance: 2,435,166
+Bruno Bolos
+\tLoot: 139,230
+\tSupplies: 631,711
+\tBalance: -492,481
+\tDamage: 6,621,843
+\tHealing: 2,879,053
+Jon Bones Joness
+\tLoot: 618,541
+\tSupplies: 420,495
+\tBalance: 198,046
+\tDamage: 5,905,030
+\tHealing: 1,231,085
+Yubrosa (Leader)
+\tLoot: 3,236,168
+\tSupplies: 506,567
+\tBalance: 2,729,601
+\tDamage: 5,234,725
+\tHealing: 1,108,438
+
+Session data: From 2025-09-21, 22:00:10 to 2025-09-21, 23:15:10
+Session: 01:15h
+Loot Type: Leader
+Loot: 2,000,000
+Supplies: 900,000
+Balance: 1,100,000
+Bruno Bolos
+\tLoot: 200,000
+\tSupplies: 450,000
+\tBalance: -250,000
+Jon Bones Joness
+\tLoot: 400,000
+\tSupplies: 250,000
+\tBalance: 150,000
+Yubrosa (Leader)
+\tLoot: 1,400,000
+\tSupplies: 200,000
+\tBalance: 1,200,000`;
+})();
+</script>
+</body>
+</html>
