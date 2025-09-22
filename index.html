@@ -70,68 +70,93 @@
 
 <script>
 (function(){
-  const $ = sel => document.querySelector(sel);
-  const $$ = sel => Array.from(document.querySelectorAll(sel));
-  const by = (k,dir=1) => (a,b)=> a[k]===b[k]?0: (a[k]>b[k]?dir:-dir);
-  const num = s => {
+  // --- helpers ---
+  function $(sel){ return document.querySelector(sel); }
+  function $all(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+  function by(k,dir){ if(dir===void 0) dir=1; return function(a,b){ if(a[k]===b[k]) return 0; return a[k]>b[k]?dir:-dir; }; }
+  function num(s){
     if(s==null) return 0;
-    const m = (s+"").replace(/[^0-9\-]/g, "");
+    var m = String(s).replace(/[^0-9\-]/g, "");
     if(!m || m === "-") return 0;
     return parseInt(m,10);
-  };
-  const fmt = n => Number(n||0).toLocaleString("en-US");
-  const fmtPlain = n => String(Math.round(n||0)); // for "Transfer 300000 to X"
-  const durToHours = hstr => {
+  }
+  function fmt(n){ return Number(n||0).toLocaleString("en-US"); }
+  function fmtPlain(n){ return String(Math.round(n||0)); }
+  function durToHours(hstr){
     if(!hstr) return 0;
-    const m = (hstr+"").match(/(\d{1,2}):(\d{2})/);
+    var m = String(hstr).match(/(\d{1,2}):(\d{2})/);
     if(!m) return 0;
-    const hh = parseInt(m[1],10)||0; const mm = parseInt(m[2],10)||0;
+    var hh = parseInt(m[1],10)||0; var mm = parseInt(m[2],10)||0;
     return hh + mm/60;
-  };
-
-  function splitSessions(raw){
-    const blocks = [];
-    const regex = /Session data:[\s\S]*?(?=\n\s*Session data:|\u0000|$)/g;
-    let match;
-    while((match = regex.exec(raw))){
-      blocks.push(match[0].trim());
-    }
-    return blocks;
+  }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>\"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];
+    });
+  }
+  function escapeAttr(s){
+    return String(s).replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+  function toast(msg){
+    var t = document.createElement("div");
+    t.textContent = msg;
+    var st = t.style;
+    st.position = "fixed"; st.bottom = "16px"; st.right = "16px";
+    st.padding = "10px 12px"; st.background = "#0d1422"; st.border = "1px solid #284166";
+    st.borderRadius = "10px"; st.boxShadow = "0 10px 24px rgba(0,0,0,.35)"; st.zIndex = 9999;
+    document.body.appendChild(t);
+    setTimeout(function(){ try{ t.remove(); }catch(e){} }, 1400);
+  }
+  function copyCSV(rows){
+    var csv = rows.map(function(r){
+      return r.map(function(v){
+        var s = (v==null?"":String(v));
+        return /[",\n]/.test(s) ? "\"" + s.replace(/"/g,'""') + "\"" : s;
+      }).join(",");
+    }).join("\n");
+    navigator.clipboard.writeText(csv).then(function(){ toast("Copied CSV!"); });
   }
 
+  // --- parsing ---
+  function splitSessions(raw){
+    var blocks = [], regex = /Session data:[\s\S]*?(?=\n\s*Session data:|\u0000|$)/g, m;
+    while((m = regex.exec(raw))){ blocks.push(m[0].trim()); }
+    return blocks;
+  }
   function parseSession(text, index){
-    const lines = text.split(/\r?\n/).map(l=>l.replace(/\t/g,"  "));
-    const session = { index, from:null, to:null, durationHours:0, lootType:null, group:{loot:0,supplies:0,balance:0}, players:[], warnings:[], tx:[] };
+    var lines = text.split(/\r?\n/).map(function(l){ return l.replace(/\t/g,"  "); });
+    var session = { index:index, from:null, to:null, durationHours:0, lootType:null,
+      group:{loot:0,supplies:0,balance:0}, players:[], warnings:[], tx:[] };
 
-    const mDates = text.match(/Session data:\s*From\s*(.*?)\s*to\s*(.*)/i);
+    var mDates = text.match(/Session data:\s*From\s*(.*?)\s*to\s*(.*)/i);
     if(mDates){ session.from = mDates[1].trim(); session.to = mDates[2].split(/\r?\n/)[0].trim(); }
-    const mDur = text.match(/\bSession:\s*([0-9]{1,2}:[0-9]{2})h/i);
+    var mDur = text.match(/\bSession:\s*([0-9]{1,2}:[0-9]{2})h/i);
     if(mDur){ session.durationHours = durToHours(mDur[1]); }
-
-    const mLootType = text.match(/Loot Type:\s*([^\r\n]+)/i);
+    var mLootType = text.match(/Loot Type:\s*([^\r\n]+)/i);
     if(mLootType){ session.lootType = mLootType[1].trim(); }
 
-    const mGroupLoot = text.match(/\n\s*Loot:\s*([\d,\.]+)/);
-    const mGroupSupp = text.match(/\n\s*Supplies:\s*([\d,\.]+)/);
-    const mGroupBal  = text.match(/\n\s*Balance:\s*([\-\d,\.]+)/);
+    var mGroupLoot = text.match(/\n\s*Loot:\s*([\d,\.]+)/);
+    var mGroupSupp = text.match(/\n\s*Supplies:\s*([\d,\.]+)/);
+    var mGroupBal  = text.match(/\n\s*Balance:\s*([\-\d,\.]+)/);
     if(mGroupLoot) session.group.loot = num(mGroupLoot[1]);
     if(mGroupSupp) session.group.supplies = num(mGroupSupp[1]);
     if(mGroupBal)  session.group.balance = num(mGroupBal[1]);
 
-    const headerWords = /^(Session data:|Session:|Loot Type:|Loot:|Supplies:|Balance:|Damage:|Healing:)/i;
-    let i=0; while(i<lines.length){
-      const line = lines[i].trimEnd();
-      const raw = lines[i];
+    var headerWords = /^(Session data:|Session:|Loot Type:|Loot:|Supplies:|Balance:|Damage:|Healing:)/i;
+    var i=0;
+    while(i<lines.length){
+      var line = lines[i].trimEnd ? lines[i].trimEnd() : lines[i].replace(/\s+$/,"");
+      var raw = lines[i];
       if(raw && !/^\s/.test(raw) && !headerWords.test(line)){
-        let name = line.trim().replace(/\s*\(Leader\)\s*$/i,"");
-        const displayName = name;
-        const p = { key:name, displayName, loot:0,supplies:0,balance:0,damage:0,healing:0 };
+        var name = line.trim().replace(/\s*\(Leader\)\s*$/i,"");
+        var displayName = name;
+        var p = { key:name, displayName:displayName, loot:0,supplies:0,balance:0,damage:0,healing:0 };
         i++;
         while(i<lines.length && /^\s/.test(lines[i])){
-          const sub = lines[i].trim();
-          const parts = sub.split(/:\s*/);
-          const k = parts[0] || "";
-          const v = parts.slice(1).join(": ");
+          var sub = lines[i].trim();
+          var parts = sub.split(/:\s*/);
+          var k = parts[0] || "";
+          var v = parts.slice(1).join(": ");
           if(/Loot/i.test(k)) p.loot = num(v);
           else if(/Supplies/i.test(k)) p.supplies = num(v);
           else if(/Balance/i.test(k)) p.balance = num(v);
@@ -145,24 +170,24 @@
       i++;
     }
 
-    const sumBalances = session.players.reduce((a,b)=>a + (b.balance||0), 0);
+    var sumBalances = session.players.reduce(function(a,b){ return a + (b.balance||0); }, 0);
     if(session.group.balance && Math.abs(sumBalances - session.group.balance) > 5){
       session.warnings.push("Sum of player balances ("+fmt(sumBalances)+") differs from group Balance ("+fmt(session.group.balance)+")");
     }
     return session;
   }
 
+  // --- aggregation (for summary table only) ---
   function aggregate(sessions){
-    const agg = new Map();
-    const presenceHours = new Map();
-    const byKey = (key) => {
-      if(!agg.has(key)) agg.set(key, { key, displayName:key, totalBalance:0, totalLoot:0, totalSupplies:0, totalDamage:0, totalHealing:0, sessions:0 });
+    var agg = new Map();
+    var presenceHours = new Map();
+    function byKey(key){
+      if(!agg.has(key)) agg.set(key, { key:key, displayName:key, totalBalance:0, totalLoot:0, totalSupplies:0, totalDamage:0, totalHealing:0, sessions:0 });
       return agg.get(key);
-    };
-
-    sessions.forEach(s=>{
-      s.players.forEach(p=>{
-        const a = byKey(p.key);
+    }
+    sessions.forEach(function(s){
+      s.players.forEach(function(p){
+        var a = byKey(p.key);
         a.displayName = p.displayName;
         a.totalBalance += p.balance||0;
         a.totalLoot += p.loot||0;
@@ -173,249 +198,222 @@
         presenceHours.set(p.key, (presenceHours.get(p.key)||0) + (s.durationHours||0));
       });
     });
-
-    const rows = Array.from(agg.values()).map(r=>{
-      const hours = presenceHours.get(r.key)||0;
-      return { ...r, hours, perHour: hours>0 ? r.totalBalance / hours : 0 };
-    }).sort((a,b)=> (b.totalBalance - a.totalBalance) || a.displayName.localeCompare(b.displayName));
-
-    return { rows, presenceHours };
+    var rows = Array.from(agg.values()).map(function(r){
+      var hours = presenceHours.get(r.key)||0;
+      return Object.assign({}, r, { hours:hours, perHour: hours>0 ? r.totalBalance / hours : 0 });
+    }).sort(function(a,b){ var d=b.totalBalance-a.totalBalance; return d!==0?d:a.displayName.localeCompare(b.displayName); });
+    return { rows:rows, presenceHours:presenceHours };
   }
 
-  // Per-session equalization: only among players present in that session
+  // --- per-session equalization (only among present players) ---
   function settleSessionEqualized(players){
-    const total = players.reduce((a,b)=>a + (b.balance||0), 0);
-    const n = players.length || 1;
-    const avg = total / n;
+    var total = players.reduce(function(a,b){ return a + (b.balance||0); }, 0);
+    var n = players.length || 1;
+    var avg = total / n;
 
-    const payers = [];   // above avg -> need to pay excess
-    const receivers = []; // below avg -> need to receive shortage
-
-    players.forEach(p=>{
-      const diff = Math.round((p.balance||0) - avg);
+    var payers = [], receivers = [];
+    players.forEach(function(p){
+      var diff = Math.round((p.balance||0) - avg);
       if(diff>0) payers.push({ name:p.displayName, amt: diff });
       else if(diff<0) receivers.push({ name:p.displayName, amt: -diff });
     });
+    payers.sort(function(a,b){ return b.amt-a.amt; });
+    receivers.sort(function(a,b){ return b.amt-a.amt; });
 
-    payers.sort((a,b)=>b.amt-a.amt);
-    receivers.sort((a,b)=>b.amt-a.amt);
-
-    const tx = [];
-    let pi=0, ri=0;
+    var tx = [], pi=0, ri=0;
     while(pi<payers.length && ri<receivers.length){
-      const p = payers[pi];
-      const r = receivers[ri];
-      const pay = Math.min(p.amt, r.amt);
+      var P = payers[pi], R = receivers[ri];
+      var pay = Math.min(P.amt, R.amt);
       if(pay>0){
-        tx.push({ from:p.name, to:r.name, amount:pay });
-        p.amt -= pay; r.amt -= pay;
+        tx.push({ from:P.name, to:R.name, amount:pay });
+        P.amt -= pay; R.amt -= pay;
       }
-      if(p.amt<=0) pi++;
-      if(r.amt<=0) ri++;
+      if(P.amt<=0) pi++;
+      if(R.amt<=0) ri++;
     }
 
-    const residue = Math.round(players.reduce((a,b)=>a + Math.round((b.balance||0) - avg),0));
-    return { tx, residue, avg };
+    var residue = Math.round(players.reduce(function(a,b){ return a + Math.round((b.balance||0) - avg); },0));
+    return { tx:tx, residue:residue, avg:avg };
   }
 
-  // Consolidate transfers across all sessions by (from,to)
+  // --- consolidate all transfers across sessions ---
   function consolidateTransfers(allTx){
-    const map = new Map(); // key "from|to" -> amount
-    allTx.forEach(t=>{
-      const key = t.from + "|" + t.to;
+    var map = new Map();
+    allTx.forEach(function(t){
+      var key = t.from + "|" + t.to;
       map.set(key, (map.get(key)||0) + t.amount);
     });
-    return Array.from(map.entries()).map(([key, amount])=>{
-      const [from,to] = key.split("|");
-      return { from, to, amount };
-    }).sort((a,b)=> b.amount - a.amount);
+    return Array.from(map.entries()).map(function(ent){
+      var key = ent[0], amount = ent[1];
+      var parts = key.split("|");
+      return { from:parts[0], to:parts[1], amount:amount };
+    }).sort(function(a,b){ return b.amount - a.amount; });
   }
 
-  function render(sessions, agg, perSessionTx, consolidated){
-    const out = $("#output");
+  // --- rendering (ASCII-only strings, no backticks) ---
+  function render(sessions, agg, allTx, consolidated){
+    var out = $("#output");
     out.innerHTML = "";
 
-    // Top summary
-    const totalSessions = sessions.length;
-    const totalHours = sessions.reduce((a,b)=>a+(b.durationHours||0),0);
-    const totalGroupBalance = sessions.reduce((a,b)=>a+(b.group.balance||0),0);
-    const sumCheck = agg.rows.reduce((a,b)=>a + b.totalBalance,0);
-    const warnSum = Math.abs(sumCheck - totalGroupBalance) > 5;
+    var totalSessions = sessions.length;
+    var totalHours = sessions.reduce(function(a,b){ return a + (b.durationHours||0); }, 0);
+    var totalGroupBalance = sessions.reduce(function(a,b){ return a + (b.group.balance||0); }, 0);
+    var sumCheck = agg.rows.reduce(function(a,b){ return a + b.totalBalance; }, 0);
+    var warnSum = Math.abs(sumCheck - totalGroupBalance) > 5;
 
-    const summary = document.createElement("div");
+    var summary = document.createElement("div");
     summary.className = "card";
-    summary.innerHTML = `
-      <div class="row">
-        <div><div class="muted">Sessions</div><div style="font-size:22px;font-weight:700">${totalSessions}</div></div>
-        <div><div class="muted">Total Hours</div><div style="font-size:22px;font-weight:700">${totalHours.toFixed(2)}</div></div>
-        <div><div class="muted">Group Balance (sum)</div><div style="font-size:22px;font-weight:700" class="${totalGroupBalance>=0?'good':'bad'}">${fmt(totalGroupBalance)}</div></div>
-        <div><div class="muted">Net (from players)</div><div style="font-size:22px;font-weight:700" class="${warnSum?'warn':''}">${fmt(Math.round(sumCheck))}</div></div>
-        <div><div class="muted">Players (unique)</div><div style="font-size:22px;font-weight:700">${agg.rows.length}</div></div>
-      </div>
-      ${warnSum?`<div class="spacer"></div><div class="notice">Heads up: Sum of players (${fmt(Math.round(sumCheck))}) != sum of session balances (${fmt(totalGroupBalance)}). I used player balances for settlement.</div>`:""}
-    `;
+    var summaryHtml = ""
+      + "<div class=\"row\">"
+      +   "<div><div class=\"muted\">Sessions</div><div style=\"font-size:22px;font-weight:700\">" + totalSessions + "</div></div>"
+      +   "<div><div class=\"muted\">Total Hours</div><div style=\"font-size:22px;font-weight:700\">" + totalHours.toFixed(2) + "</div></div>"
+      +   "<div><div class=\"muted\">Group Balance (sum)</div><div style=\"font-size:22px;font-weight:700\" class=\"" + (totalGroupBalance>=0?"good":"bad") + "\">" + fmt(totalGroupBalance) + "</div></div>"
+      +   "<div><div class=\"muted\">Net (from players)</div><div style=\"font-size:22px;font-weight:700\" class=\"" + (warnSum?"warn":"") + "\">" + fmt(Math.round(sumCheck)) + "</div></div>"
+      +   "<div><div class=\"muted\">Players (unique)</div><div style=\"font-size:22px;font-weight:700\">" + agg.rows.length + "</div></div>"
+      + "</div>";
+    if(warnSum){
+      summaryHtml += "<div class=\"spacer\"></div><div class=\"notice\">Heads up: Sum of players (" + fmt(Math.round(sumCheck)) + ") != sum of session balances (" + fmt(totalGroupBalance) + "). I used player balances for settlement.</div>";
+    }
+    summary.innerHTML = summaryHtml;
     out.appendChild(summary);
 
-    // Aggregated per person
-    const per = document.createElement("div");
+    var per = document.createElement("div");
     per.className = "card";
-    per.innerHTML = `<div class="toolbar"><strong>Aggregated — per person</strong><span class="muted">(across all sessions)</span><span class="right small"><button id="copy-agg">Copy CSV</button></span></div>`;
-    const tbl = document.createElement("table");
-    tbl.innerHTML = `
-      <thead><tr>
-        <th>Player</th><th class="nowrap">Sessions</th><th class="nowrap">Hours</th>
-        <th>Loot</th><th>Supplies</th><th>Balance</th><th>Per hour</th>
-      </tr></thead>
-      <tbody>
-        ${agg.rows.map(r=>`
-          <tr>
-            <td>${escapeHtml(r.displayName)}</td>
-            <td>${r.sessions}</td>
-            <td>${r.hours.toFixed(2)}</td>
-            <td>${fmt(r.totalLoot)}</td>
-            <td>${fmt(r.totalSupplies)}</td>
-            <td class="${r.totalBalance>=0?'good':'bad'}">${fmt(r.totalBalance)}</td>
-            <td class="${r.perHour>=0?'good':'bad'}">${fmt(Math.round(r.perHour))}</td>
-          </tr>`).join("")}
-      </tbody>
-    `;
+    per.innerHTML = "<div class=\"toolbar\"><strong>Aggregated — per person</strong><span class=\"muted\">(across all sessions)</span><span class=\"right small\"><button id=\"copy-agg\">Copy CSV</button></span></div>";
+    var tbl = document.createElement("table");
+    var bodyRows = agg.rows.map(function(r){
+      return ""
+        + "<tr>"
+        +   "<td>" + escapeHtml(r.displayName) + "</td>"
+        +   "<td>" + r.sessions + "</td>"
+        +   "<td>" + r.hours.toFixed(2) + "</td>"
+        +   "<td>" + fmt(r.totalLoot) + "</td>"
+        +   "<td>" + fmt(r.totalSupplies) + "</td>"
+        +   "<td class=\"" + (r.totalBalance>=0?"good":"bad") + "\">" + fmt(r.totalBalance) + "</td>"
+        +   "<td class=\"" + (r.perHour>=0?"good":"bad") + "\">" + fmt(Math.round(r.perHour)) + "</td>"
+        + "</tr>";
+    }).join("");
+    tbl.innerHTML = ""
+      + "<thead><tr>"
+      + "<th>Player</th><th class=\"nowrap\">Sessions</th><th class=\"nowrap\">Hours</th>"
+      + "<th>Loot</th><th>Supplies</th><th>Balance</th><th>Per hour</th>"
+      + "</tr></thead>"
+      + "<tbody>" + bodyRows + "</tbody>";
     per.appendChild(tbl);
     out.appendChild(per);
-    per.querySelector("#copy-agg").addEventListener("click", ()=>{
-      const header = ["Player","Sessions","Hours","Loot","Supplies","Balance","PerHour"];
-      const rows = agg.rows.map(r=>[r.displayName,r.sessions,r.hours.toFixed(2),r.totalLoot,r.totalSupplies,r.totalBalance,Math.round(r.perHour)]);
-      copyCSV([header,...rows]);
+
+    per.querySelector("#copy-agg").addEventListener("click", function(){
+      var header = ["Player","Sessions","Hours","Loot","Supplies","Balance","PerHour"];
+      var rows = agg.rows.map(function(r){ return [r.displayName,r.sessions,r.hours.toFixed(2),r.totalLoot,r.totalSupplies,r.totalBalance,Math.round(r.perHour)]; });
+      copyCSV([header].concat(rows));
     });
 
-    // CONSOLIDATED settlement across all sessions (payer->receiver pairs summed)
-    const set = document.createElement("div");
+    var set = document.createElement("div");
     set.className = "card";
-    set.innerHTML = `<div class="toolbar"><strong>Final Settlement — consolidated</strong><span class="muted">Pairs summed across sessions</span><span class="right small"><button id="copy-all-set">Copy all</button></span></div>`;
+    set.innerHTML = "<div class=\"toolbar\"><strong>Final Settlement — consolidated</strong><span class=\"muted\">Pairs summed across sessions</span><span class=\"right small\"><button id=\"copy-all-set\">Copy all</button></span></div>";
     if(consolidated.length){
-      const t = document.createElement("table");
-      t.innerHTML = `
-        <thead><tr><th>From</th><th>To</th><th>Amount</th><th>Action</th></tr></thead>
-        <tbody>
-          ${consolidated.map(t=>`
-            <tr>
-              <td>${escapeHtml(t.from)}</td>
-              <td>${escapeHtml(t.to)}</td>
-              <td class="tx-amount">${fmt(t.amount)}</td>
-              <td><button class="copybtn" data-to="${escapeAttr(t.to)}" data-amount="${t.amount}">Copy</button></td>
-            </tr>`).join("")}
-        </tbody>
-      `;
+      var t = document.createElement("table");
+      var rowsHtml = consolidated.map(function(ti){
+        return ""
+          + "<tr>"
+          +   "<td>" + escapeHtml(ti.from) + "</td>"
+          +   "<td>" + escapeHtml(ti.to) + "</td>"
+          +   "<td class=\"tx-amount\">" + fmt(ti.amount) + "</td>"
+          +   "<td><button class=\"copybtn\" data-to=\"" + escapeAttr(ti.to) + "\" data-amount=\"" + ti.amount + "\">Copy</button></td>"
+          + "</tr>";
+      }).join("");
+      t.innerHTML = "<thead><tr><th>From</th><th>To</th><th>Amount</th><th>Action</th></tr></thead><tbody>" + rowsHtml + "</tbody>";
       set.appendChild(t);
-    }else{
-      set.innerHTML += `<div class="muted">Nothing to settle — everyone is even.</div>`;
+    } else {
+      set.innerHTML += "<div class=\"muted\">Nothing to settle — everyone is even.</div>";
     }
     out.appendChild(set);
 
-    // Copy handlers
-    set.querySelector("#copy-all-set")?.addEventListener("click", ()=>{
-      const lines = consolidated.map(t=>`Transfer ${fmtPlain(t.amount)} to ${t.to}`);
-      navigator.clipboard.writeText(lines.join("\n")).then(()=>toast("Copied all transfers")));
-    });
-    set.addEventListener("click", (ev)=>{
-      const btn = ev.target.closest(".copybtn");
+    var copyAllBtn = set.querySelector("#copy-all-set");
+    if(copyAllBtn){
+      copyAllBtn.addEventListener("click", function(){
+        var lines = consolidated.map(function(ti){ return "Transfer " + fmtPlain(ti.amount) + " to " + ti.to; });
+        navigator.clipboard.writeText(lines.join("\n")).then(function(){ toast("Copied all transfers"); });
+      });
+    }
+    set.addEventListener("click", function(ev){
+      var btn = ev.target && ev.target.closest ? ev.target.closest(".copybtn") : null;
       if(!btn) return;
-      const amount = btn.getAttribute("data-amount");
-      const to = btn.getAttribute("data-to");
-      const line = `Transfer ${fmtPlain(amount)} to ${to}`;
-      navigator.clipboard.writeText(line).then(()=>toast("Copied: "+line));
+      var amount = btn.getAttribute("data-amount");
+      var to = btn.getAttribute("data-to");
+      var line = "Transfer " + fmtPlain(amount) + " to " + to;
+      navigator.clipboard.writeText(line).then(function(){ toast("Copied: " + line); });
     });
 
-    // Per-session cards with their own settlement tables
-    sessions.forEach(s=>{
-      const d = document.createElement("div");
-      d.className = "card";
-      const title = `Session #${String(s.index).padStart(2,"0")} • ${s.from?escapeHtml(s.from):""} → ${s.to?escapeHtml(s.to):""} • ${s.durationHours.toFixed(2)}h`;
-      d.innerHTML = `<div class="toolbar"><strong>${title}</strong><span class="pill">Loot Type: ${escapeHtml(s.lootType||"-")}</span><span class="pill">Group Bal: <span class="${s.group.balance>=0?'good':'bad'}">${fmt(s.group.balance)}</span></span></div>`;
+    sessions.forEach(function(s){
+      var card = document.createElement("div");
+      card.className = "card";
+      var title = "Session #" + String(s.index).padStart(2,"0") + " • " + (s.from?escapeHtml(s.from):"") + " \u2192 " + (s.to?escapeHtml(s.to):"") + " • " + s.durationHours.toFixed(2) + "h";
+      var top = "<div class=\"toolbar\"><strong>" + title + "</strong><span class=\"pill\">Loot Type: " + escapeHtml(s.lootType||"-") + "</span><span class=\"pill\">Group Bal: <span class=\"" + (s.group.balance>=0?"good":"bad") + "\">" + fmt(s.group.balance) + "</span></span></div>";
       if(s.warnings.length){
-        d.innerHTML += s.warnings.map(w=>`<div class="spacer"></div><div class="notice">${escapeHtml(w)}</div>`).join("");
+        for(var w=0; w<s.warnings.length; w++){
+          top += "<div class=\"spacer\"></div><div class=\"notice\">" + escapeHtml(s.warnings[w]) + "</div>";
+        }
       }
-      const t = document.createElement("table");
-      t.innerHTML = `
-        <thead><tr><th>Player</th><th>Loot</th><th>Supplies</th><th>Balance</th><th>Damage</th><th>Healing</th></tr></thead>
-        <tbody>
-          ${s.players.sort(by("displayName")).map(p=>`<tr>
-            <td>${escapeHtml(p.displayName)}</td>
-            <td>${fmt(p.loot)}</td><td>${fmt(p.supplies)}</td>
-            <td class="${p.balance>=0?'good':'bad'}">${fmt(p.balance)}</td>
-            <td>${fmt(p.damage)}</td><td>${fmt(p.healing)}</td>
-          </tr>`).join("")}
-        </tbody>`;
-      d.appendChild(t);
+      var playersTbl = document.createElement("table");
+      var pRows = s.players.slice().sort(by("displayName")).map(function(p){
+        return ""
+          + "<tr>"
+          +   "<td>" + escapeHtml(p.displayName) + "</td>"
+          +   "<td>" + fmt(p.loot) + "</td>"
+          +   "<td>" + fmt(p.supplies) + "</td>"
+          +   "<td class=\"" + (p.balance>=0?"good":"bad") + "\">" + fmt(p.balance) + "</td>"
+          +   "<td>" + fmt(p.damage) + "</td>"
+          +   "<td>" + fmt(p.healing) + "</td>"
+          + "</tr>";
+      }).join("");
+      playersTbl.innerHTML = "<thead><tr><th>Player</th><th>Loot</th><th>Supplies</th><th>Balance</th><th>Damage</th><th>Healing</th></tr></thead><tbody>" + pRows + "</tbody>";
 
-      // Session-level settlement table
+      card.innerHTML = top;
+      card.appendChild(playersTbl);
+
       if(s.tx && s.tx.length){
-        const ts = document.createElement("div");
-        ts.style.marginTop = "8px";
-        ts.innerHTML = `<div class="toolbar"><strong>Session settlement</strong><span class="muted">Equalized among ${s.players.length} players</span></div>`;
-        const tt = document.createElement("table");
-        tt.innerHTML = `
-          <thead><tr><th>From</th><th>To</th><th>Amount</th><th>Action</th></tr></thead>
-          <tbody>
-            ${s.tx.map(t=>`
-              <tr>
-                <td>${escapeHtml(t.from)}</td>
-                <td>${escapeHtml(t.to)}</td>
-                <td class="tx-amount">${fmt(t.amount)}</td>
-                <td><button class="copybtn" data-to="${escapeAttr(t.to)}" data-amount="${t.amount}">Copy</button></td>
-              </tr>`).join("")}
-          </tbody>
-        `;
-        ts.appendChild(tt);
-        d.appendChild(ts);
+        var sec = document.createElement("div");
+        sec.style.marginTop = "8px";
+        sec.innerHTML = "<div class=\"toolbar\"><strong>Session settlement</strong><span class=\"muted\">Equalized among " + s.players.length + " players</span></div>";
+        var tt = document.createElement("table");
+        var txRows = s.tx.map(function(ti){
+          return ""
+            + "<tr>"
+            +   "<td>" + escapeHtml(ti.from) + "</td>"
+            +   "<td>" + escapeHtml(ti.to) + "</td>"
+            +   "<td class=\"tx-amount\">" + fmt(ti.amount) + "</td>"
+            +   "<td><button class=\"copybtn\" data-to=\"" + escapeAttr(ti.to) + "\" data-amount=\"" + ti.amount + "\">Copy</button></td>"
+            + "</tr>";
+        }).join("");
+        tt.innerHTML = "<thead><tr><th>From</th><th>To</th><th>Amount</th><th>Action</th></tr></thead><tbody>" + txRows + "</tbody>";
+        sec.appendChild(tt);
+        card.appendChild(sec);
       }
 
-      out.appendChild(d);
+      out.appendChild(card);
     });
   }
 
-  function escapeHtml(s){
-    return (s+"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
-  }
-  function escapeAttr(s){
-    return (s+"").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-  }
-
-  function copyCSV(rows){
-    const csv = rows.map(r=>r.map(v=>{
-      const s = (v==null?"":String(v));
-      return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
-    }).join(","))
-    .join("\n");
-    navigator.clipboard.writeText(csv).then(()=>toast("Copied CSV!"));
-  }
-
-  function toast(msg){
-    const t = document.createElement("div");
-    t.textContent = msg;
-    Object.assign(t.style, {position:"fixed",bottom:"16px",right:"16px",padding:"10px 12px",background:"#0d1422",border:"1px solid #284166",borderRadius:"10px",boxShadow:"0 10px 24px rgba(0,0,0,.35)",zIndex:9999});
-    document.body.appendChild(t);
-    setTimeout(()=>t.remove(), 1400);
-  }
-
+  // --- main flow ---
   function analyze(){
-    const raw = $("#paste").value || "";
+    var raw = $("#paste").value || "";
     if(!raw.trim()){ toast("Paste some session data first"); return; }
-    const blocks = splitSessions(raw);
+    var blocks = splitSessions(raw);
     if(blocks.length===0){ toast("No sessions found"); return; }
-    const sessions = blocks.map((b,i)=>parseSession(b, i+1));
 
-    // Per-session settlement and capture transfers
-    const allTx = [];
-    sessions.forEach(s=>{
-      const res = settleSessionEqualized(s.players);
-      s.tx = res.tx;
-      s.settleAvg = res.avg;
-      s.residue = res.residue;
-      allTx.push(...res.tx);
+    var sessions = blocks.map(function(b,i){ return parseSession(b, i+1); });
+
+    // compute per-session settlement and gather all transfers
+    var allTx = [];
+    sessions.forEach(function(s){
+      var res = settleSessionEqualized(s.players);
+      s.tx = res.tx; s.settleAvg = res.avg; s.residue = res.residue;
+      Array.prototype.push.apply(allTx, res.tx);
     });
 
-    const agg = aggregate(sessions);
-    const consolidated = consolidateTransfers(allTx);
+    var agg = aggregate(sessions);
+    var consolidated = consolidateTransfers(allTx);
 
     render(sessions, agg, allTx, consolidated);
 
@@ -423,14 +421,13 @@
   }
 
   $("#analyze").addEventListener("click", analyze);
-  $("#clear").addEventListener("click", ()=>{
-    $("#paste").value="";
-    $("#output").innerHTML="";
-    try{localStorage.removeItem("tibia-loot-split-last");}catch(e){}
+  $("#clear").addEventListener("click", function(){
+    $("#paste").value=""; $("#output").innerHTML="";
+    try{ localStorage.removeItem("tibia-loot-split-last"); }catch(e){}
   });
 
   try{
-    const last = localStorage.getItem("tibia-loot-split-last");
+    var last = localStorage.getItem("tibia-loot-split-last");
     if(last) $("#paste").value = last;
   }catch(e){}
 })();
