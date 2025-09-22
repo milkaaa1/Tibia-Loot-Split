@@ -55,10 +55,7 @@
       <div class="toolbar">
         <button id="analyze" class="btn-accent">Analyze</button>
         <button id="clear" class="btn-ghost">Clear</button>
-        <button id="sample" class="btn-ghost">Load sample</button>
-        <label class="pill"><input type="checkbox" id="normalize" checked> Normalize names (case‑insensitive)</label>
-        <label class="pill"><input type="checkbox" id="strict"> Strict totals check</label>
-        <span class="pill">Version 1.0</span>
+        <span class="pill">Version 1.1</span>
       </div>
       <div class="spacer"></div>
       <textarea id="paste" placeholder="Paste multiple sessions here..."></textarea>
@@ -66,7 +63,7 @@
 
     <div id="output" class="grid" style="margin-top:12px; gap:12px"></div>
 
-    <div class="footer small muted">Tip: the settlement uses each player's reported <span class="hl">Balance</span> from your logs. Debtors (negative) pay creditors (positive). Multiple sessions are aggregated so you can settle once.</div>
+    <div class="footer small muted">Settlement equalizes everyone to the same share of the <span class="hl">total</span> profit/waste across your pasted sessions. Those above average pay those below average.</div>
   </div>
 
 <script>
@@ -101,7 +98,7 @@
     return blocks;
   }
 
-  function parseSession(text, index, opts){
+  function parseSession(text, index){
     const lines = text.split(/\r?\n/).map(l=>l.replace(/\t/g,'  '));
     const session = { index, from:null, to:null, durationHours:0, lootType:null, group:{loot:0,supplies:0,balance:0}, players:[], warnings:[] };
 
@@ -131,7 +128,7 @@
         let name = line.trim();
         name = name.replace(/\s*\(Leader\)\s*$/i,'');
         const displayName = name;
-        if(opts.normalize) name = normalizeName(name);
+        
         const p = { key:name, displayName, loot:0,supplies:0,balance:0,damage:0,healing:0 };
         i++;
         // consume indented details
@@ -155,15 +152,13 @@
     const sumBalances = session.players.reduce((a,b)=>a + (b.balance||0), 0);
     if(session.group.balance && Math.abs(sumBalances - session.group.balance) > 5){
       session.warnings.push(`Sum of player balances (${fmt(sumBalances)}) differs from group Balance (${fmt(session.group.balance)})`);
+    }) differs from group Balance (${fmt(session.group.balance)})`);
       if(opts.strict) session.error = true;
     }
     return session;
   }
 
-  function normalizeName(n){
-    return (n||'').trim().toLowerCase();
-  }
-
+  
   function aggregate(sessions){
     const agg = new Map(); // key -> stats
     const presenceHours = new Map(); // key -> total hours they were in sessions
@@ -195,8 +190,42 @@
     return { rows, presenceHours };
   }
 
-  function settle(netRows){
-    const creditors = []; // {name, amt}
+  function settleEqualized(netRows){
+    // Equalize everyone to the global average (fair split of total profit/waste)
+    const total = netRows.reduce((a,b)=>a + (b.totalBalance||0), 0);
+    const n = netRows.length || 1;
+    const avg = total / n;
+
+    const payers = [];   // those above average pay the excess
+    const receivers = []; // those below average receive the gap
+
+    netRows.forEach(r=>{
+      const diff = Math.round((r.totalBalance||0) - avg);
+      if(diff>0) payers.push({ name:r.displayName, amt: diff });
+      else if(diff<0) receivers.push({ name:r.displayName, amt: -diff });
+    });
+
+    payers.sort((a,b)=>b.amt-a.amt);
+    receivers.sort((a,b)=>b.amt-a.amt);
+
+    const tx = [];
+    let pi=0, ri=0;
+    while(pi<payers.length && ri<receivers.length){
+      const p = payers[pi];
+      const r = receivers[ri];
+      const pay = Math.min(p.amt, r.amt);
+      if(pay>0){
+        tx.push({ from:p.name, to:r.name, amount:pay });
+        p.amt -= pay; r.amt -= pay;
+      }
+      if(p.amt<=0) pi++;
+      if(r.amt<=0) ri++;
+    }
+
+    // Residue due to rounding: sum of diffs should be 0, but guard anyway
+    const residue = Math.round(netRows.reduce((a,b)=>a + Math.round((b.totalBalance||0) - avg),0));
+    return { transactions: tx, residue, average: avg };
+  }
     const debtors = [];
     netRows.forEach(r=>{
       const amt = Math.round(r.totalBalance);
@@ -303,7 +332,7 @@
     // Settlement
     const set = document.createElement('div');
     set.className = 'card';
-    set.innerHTML = `<div class="toolbar"><strong>Final Settlement — single transactions</strong><span class="muted">Debtors pay creditors</span><span class="right small"><button id="copy-set">Copy list</button></span></div>`;
+    set.innerHTML = `<div class="toolbar"><strong>Final Settlement — equalized to average</strong><span class="muted">Everyone ends with the same share of total profit/waste</span><span class="right small"><button id="copy-set">Copy list</button></span></div>`;
 
     const tx = settlement.transactions;
     const hasTx = tx.length>0;
@@ -317,7 +346,9 @@
     ` : `<div class="muted">Nothing to settle — everyone is even.</div>`;
 
     if(settlement.residue!==0){
-      set.innerHTML += `<div class="spacer"></div><div class="notice">Residual net after rounding: ${fmt(settlement.residue)} gp. If non‑zero, adjust the smallest transaction by this amount.</div>`
+      set.innerHTML += `<div class="spacer"></div><div class="notice">Residual net after rounding: ${fmt(settlement.residue)} gp. Adjust a smallest transaction to zero this out.</div>`
+    }
+    set.innerHTML += `<div class="spacer"></div><div class="small muted">Average per person across all sessions: <strong>${fmt(Math.round(settlement.average))}</strong> gp</div>` gp. If non‑zero, adjust the smallest transaction by this amount.</div>`
     }
 
     out.appendChild(set);
@@ -379,18 +410,16 @@
     const blocks = splitSessions(raw);
     if(blocks.length===0){ toast('No sessions found'); return; }
     const opts = { normalize: $('#normalize').checked, strict: $('#strict').checked };
-    const sessions = blocks.map((b,i)=>parseSession(b, i+1, opts)).filter(s=>!s.error);
+    const sessions = blocks.map((b,i)=>parseSession(b, i+1));
     if(sessions.length===0){ toast('All sessions failed strict checks. Disable Strict?'); return; }
     const agg = aggregate(sessions);
-    const settlement = settle(agg.rows);
+    const settlement = settleEqualized(agg.rows);
     render(sessions, agg, settlement);
     try{ localStorage.setItem('tibia-loot-split-last', raw); }catch(e){}
   }
 
   $('#analyze').addEventListener('click', analyze);
-  $('#clear').addEventListener('click', ()=>{ $('#paste').value=''; $('#output').innerHTML=''; try{localStorage.removeItem('tibia-loot-split-last')}catch(e){} });
-  $('#sample').addEventListener('click', ()=>{
-    $('#paste').value = SAMPLE.trim(); analyze();
+  $('#clear').addEventListener('click', ()=>{ $('#paste').value=''; $('#output').innerHTML=''; try{localStorage.removeItem('tibia-loot-split-last')}catch(e){} }); analyze();
   });
 
   // Restore last input if present
