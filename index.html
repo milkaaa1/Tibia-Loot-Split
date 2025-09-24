@@ -69,7 +69,7 @@
     </div>
   </div>
 
-<script>
+  <script>
 (function(){
   // --- helpers ---
   function $(sel){ return document.querySelector(sel); }
@@ -81,11 +81,8 @@
     if(!m || m === "-") return 0;
     return parseInt(m,10);
   }
-  function fmtDps(n){
-    return Number(n||0).toLocaleString("en-US", { maximumFractionDigits: 1 });
-  }
-
   function fmt(n){ return Number(n||0).toLocaleString("en-US"); }
+  function fmtDps(n){ return Number(n||0).toLocaleString("en-US", { maximumFractionDigits: 1 }); }
   function fmtPlain(n){ return String(Math.round(n||0)); }
   function durToHours(hstr){
     if(!hstr) return 0;
@@ -210,7 +207,6 @@
         perHour: hours>0 ? r.totalBalance / hours : 0,
         dps: hours>0 ? (r.totalDamage / (hours * 3600)) : 0
       });
-
     }).sort(function(a,b){ var d=b.totalBalance-a.totalBalance; return d!==0?d:a.displayName.localeCompare(b.displayName); });
     return { rows:rows, presenceHours:presenceHours };
   }
@@ -287,6 +283,7 @@
     summary.innerHTML = summaryHtml;
     out.appendChild(summary);
 
+    // Aggregated table (now includes DPS)
     var per = document.createElement("div");
     per.className = "card";
     per.innerHTML = "<div class=\"toolbar\"><strong>Aggregated — per person</strong><span class=\"muted\">(across all sessions)</span><span class=\"right small\"><button id=\"copy-agg\">Copy CSV</button></span></div>";
@@ -297,7 +294,7 @@
         +   "<td>" + escapeHtml(r.displayName) + "</td>"
         +   "<td>" + r.sessions + "</td>"
         +   "<td>" + r.hours.toFixed(2) + "</td>"
-       +   "<td>" + fmt(r.totalLoot) + "</td>"
+        +   "<td>" + fmt(r.totalLoot) + "</td>"
         +   "<td>" + fmt(r.totalSupplies) + "</td>"
         +   "<td class=\"" + (r.totalBalance>=0?"good":"bad") + "\">" + fmt(r.totalBalance) + "</td>"
         +   "<td>" + fmtDps(r.dps) + "</td>"
@@ -314,11 +311,14 @@
     out.appendChild(per);
 
     per.querySelector("#copy-agg").addEventListener("click", function(){
-      var header = ["Player","Sessions","Hours","Loot","Supplies","Balance","PerHour"];
-      var rows = agg.rows.map(function(r){ return [r.displayName,r.sessions,r.hours.toFixed(2),r.totalLoot,r.totalSupplies,r.totalBalance,Math.round(r.perHour)]; });
+      var header = ["Player","Sessions","Hours","Loot","Supplies","Balance","DPS","PerHour"];
+      var rows = agg.rows.map(function(r){
+        return [r.displayName,r.sessions,r.hours.toFixed(2),r.totalLoot,r.totalSupplies,r.totalBalance,r.dps.toFixed(1),Math.round(r.perHour)];
+      });
       copyCSV([header].concat(rows));
     });
 
+    // Consolidated settlement
     var set = document.createElement("div");
     set.className = "card";
     set.innerHTML = "<div class=\"toolbar\"><strong>Final Settlement — consolidated</strong><span class=\"muted\">Pairs summed across sessions</span><span class=\"right small\"><button id=\"copy-all-set\">Copy all</button></span></div>";
@@ -356,6 +356,7 @@
       navigator.clipboard.writeText(line).then(function(){ toast("Copied: " + line); });
     });
 
+    // Per-session cards (with DPS column)
     sessions.forEach(function(s){
       var card = document.createElement("div");
       card.className = "card";
@@ -377,10 +378,11 @@
           +   "<td>" + fmt(p.damage) + "</td>"
           +   "<td>" + fmtDps(s.durationHours>0 ? (p.damage / (s.durationHours * 3600)) : 0) + "</td>"
           +   "<td>" + fmt(p.healing) + "</td>"
-
           + "</tr>";
       }).join("");
-      playersTbl.innerHTML = "<thead><tr><th>Player</th><th>Loot</th><th>Supplies</th><th>Balance</th><th>Damage</th><th>DPS</th><th>Healing</th></tr></thead>"<tbody>" + pRows + "</tbody>";
+      playersTbl.innerHTML =
+        "<thead><tr><th>Player</th><th>Loot</th><th>Supplies</th><th>Balance</th><th>Damage</th><th>DPS</th><th>Healing</th></tr></thead>"
+        + "<tbody>" + pRows + "</tbody>";
 
       card.innerHTML = top;
       card.appendChild(playersTbl);
@@ -417,7 +419,7 @@
 
     var sessions = blocks.map(function(b,i){ return parseSession(b, i+1); });
 
-    // compute per-session settlement and gather all transfers
+    // per-session settlement and gather all transfers
     var allTx = [];
     sessions.forEach(function(s){
       var res = settleSessionEqualized(s.players);
@@ -433,47 +435,107 @@
     try{ localStorage.setItem("tibia-loot-split-last", raw); }catch(e){}
   }
 
-  // ---- UTF-8 safe base64url helpers (no backticks) ----
-function b64urlEncodeUtf8(str){
-  var utf8 = encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function(m,p){ return String.fromCharCode(parseInt(p,16)); });
-  var b64 = btoa(utf8);
-  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/,"");
-}
-function b64urlDecodeUtf8(b64u){
-  var b64 = b64u.replace(/-/g, "+").replace(/_/g, "/");
-  while(b64.length % 4) b64 += "=";
-  var bin = atob(b64);
-  var esc = "";
-  for(var i=0;i<bin.length;i++){
-    var h = bin.charCodeAt(i).toString(16); if(h.length<2) h="0"+h;
-    esc += "%" + h.toUpperCase();
+  // ====== SHORTER SHARE LINKS: gzip + base64url (#g=), fallback to #d= ======
+  // Uint8Array <-> base64url
+  function b64urlFromU8(u8){
+    var CHUNK = 0x8000, i=0, len=u8.length, s="";
+    while(i < len){
+      var chunk = u8.subarray(i, Math.min(i+CHUNK, len));
+      s += String.fromCharCode.apply(null, chunk);
+      i += CHUNK;
+    }
+    var b64 = btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+    return b64;
   }
-  return decodeURIComponent(esc);
-}
-
-// Build a shareable URL like https://user.github.io/repo/#d=...
-function buildShareUrl(text){
-  var encoded = b64urlEncodeUtf8(text);
-  var base = location.origin + location.pathname;
-  return base + "#d=" + encoded;
-}
-
-// On load: if hash has #d=..., load it (and optionally auto-analyze)
-function tryLoadFromHash(autoAnalyze){
-  if(location.hash && location.hash.indexOf("#d=") === 0){
-    var data = location.hash.slice(3); // after "#d"
-    try{
-      var text = b64urlDecodeUtf8(data);
-      var area = document.getElementById("paste");
-      area.value = text;
-      if(autoAnalyze){ document.getElementById("analyze").click(); }
-      return true;
-    }catch(e){}
+  function u8FromB64url(b64u){
+    var b64 = b64u.replace(/-/g,"+").replace(/_/g,"/");
+    while(b64.length % 4) b64 += "=";
+    var bin = atob(b64), len=bin.length, u8=new Uint8Array(len);
+    for(var i=0;i<len;i++){ u8[i] = bin.charCodeAt(i); }
+    return u8;
   }
-  return false;
-}
+  function gzipAvailable(){
+    try{ return typeof CompressionStream !== "undefined" && typeof DecompressionStream !== "undefined"; }
+    catch(e){ return false; }
+  }
+  function gzipCompress(text){
+    if(!gzipAvailable()) return Promise.reject(new Error("gzip-not-available"));
+    var enc = new TextEncoder();
+    var cs = new CompressionStream("gzip");
+    var w = cs.writable.getWriter();
+    w.write(enc.encode(text));
+    w.close();
+    return new Response(cs.readable).arrayBuffer().then(function(buf){ return new Uint8Array(buf); });
+  }
+  function gzipDecompress(u8){
+    if(!gzipAvailable()) return Promise.reject(new Error("gzip-not-available"));
+    var ds = new DecompressionStream("gzip");
+    var w = ds.writable.getWriter();
+    w.write(u8);
+    w.close();
+    return new Response(ds.readable).arrayBuffer().then(function(buf){
+      return new TextDecoder().decode(new Uint8Array(buf));
+    });
+  }
+  // Legacy UTF-8 base64url (fallback)
+  function b64urlEncodeUtf8(str){
+    var utf8 = encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function(m,p){ return String.fromCharCode(parseInt(p,16)); });
+    var b64 = btoa(utf8);
+    return b64.replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+  }
+  function b64urlDecodeUtf8(b64u){
+    var b64 = b64u.replace(/-/g,"+").replace(/_/g,"/");
+    while(b64.length % 4) b64 += "=";
+    var bin = atob(b64);
+    var esc = "";
+    for(var i=0;i<bin.length;i++){
+      var h = bin.charCodeAt(i).toString(16); if(h.length<2) h="0"+h;
+      esc += "%" + h.toUpperCase();
+    }
+    return decodeURIComponent(esc);
+  }
 
+  function buildShareUrl(text){
+    var base = location.origin + location.pathname;
+    if(gzipAvailable()){
+      return gzipCompress(text).then(function(u8){
+        return base + "#g=" + b64urlFromU8(u8);
+      }).catch(function(){
+        return base + "#d=" + b64urlEncodeUtf8(text);
+      });
+    }else{
+      return base + "#d=" + b64urlEncodeUtf8(text);
+    }
+  }
 
+  function tryLoadFromHash(autoAnalyze){
+    if(!location.hash) return false;
+    // Prefer #g=
+    if(location.hash.indexOf("#g=") === 0){
+      try{
+        var u8 = u8FromB64url(location.hash.slice(3));
+        return gzipDecompress(u8).then(function(text){
+          var area = document.getElementById("paste");
+          area.value = text;
+          if(autoAnalyze){ document.getElementById("analyze").click(); }
+          return true;
+        }).catch(function(){ return false; });
+      }catch(e){ /* fall through to #d= */ }
+    }
+    // Fallback #d=
+    if(location.hash.indexOf("#d=") === 0){
+      try{
+        var text2 = b64urlDecodeUtf8(location.hash.slice(3));
+        var area2 = document.getElementById("paste");
+        area2.value = text2;
+        if(autoAnalyze){ document.getElementById("analyze").click(); }
+        return true;
+      }catch(e2){}
+    }
+    return false;
+  }
+
+  // --- UI wiring ---
   $("#analyze").addEventListener("click", analyze);
   $("#clear").addEventListener("click", function(){
     $("#paste").value=""; $("#output").innerHTML="";
@@ -481,23 +543,31 @@ function tryLoadFromHash(autoAnalyze){
   });
 
   document.getElementById("share").addEventListener("click", function(){
-  var text = document.getElementById("paste").value || "";
-  if(!text.trim()){ toast("Nothing to share"); return; }
-  var url = buildShareUrl(text);
-  navigator.clipboard.writeText(url).then(function(){ toast("Share link copied"); });
-});
+    var text = document.getElementById("paste").value || "";
+    if(!text.trim()){ toast("Nothing to share"); return; }
+    var p = buildShareUrl(text);
+    if(p && typeof p.then === "function"){
+      p.then(function(url){
+        navigator.clipboard.writeText(url).then(function(){ toast("Share link copied"); });
+      }).catch(function(){ toast("Failed to build share link"); });
+    }else{
+      navigator.clipboard.writeText(String(p)).then(function(){ toast("Share link copied"); });
+    }
+  });
 
-// On first load: if hash contains data, load and auto-analyze
-tryLoadFromHash(true);
-
-
-  try{
-    var last = localStorage.getItem("tibia-loot-split-last");
-    if(last) $("#paste").value = last;
-  }catch(e){}
+  // On first load: if hash contains data, load and auto-analyze
+  (function(){
+    var ok = tryLoadFromHash(true);
+    if(!ok){
+      try{
+        var last = localStorage.getItem("tibia-loot-split-last");
+        if(last) $("#paste").value = last;
+      }catch(e){}
+    }
+  })();
 })();
-
-  
 </script>
+
+
 </body>
 </html>
