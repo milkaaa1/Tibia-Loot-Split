@@ -55,6 +55,7 @@
       <div class="toolbar">
         <button id="analyze" class="btn-accent">Analyze</button>
         <button id="clear" class="btn-ghost">Clear</button>
+        <button id="share" class="btn-ghost">Share Analyzer</button>
         <span class="pill">Version 1.2</span>
       </div>
       <div class="spacer"></div>
@@ -420,17 +421,71 @@
     try{ localStorage.setItem("tibia-loot-split-last", raw); }catch(e){}
   }
 
+  // ---- UTF-8 safe base64url helpers (no backticks) ----
+function b64urlEncodeUtf8(str){
+  var utf8 = encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function(m,p){ return String.fromCharCode(parseInt(p,16)); });
+  var b64 = btoa(utf8);
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/,"");
+}
+function b64urlDecodeUtf8(b64u){
+  var b64 = b64u.replace(/-/g, "+").replace(/_/g, "/");
+  while(b64.length % 4) b64 += "=";
+  var bin = atob(b64);
+  var esc = "";
+  for(var i=0;i<bin.length;i++){
+    var h = bin.charCodeAt(i).toString(16); if(h.length<2) h="0"+h;
+    esc += "%" + h.toUpperCase();
+  }
+  return decodeURIComponent(esc);
+}
+
+// Build a shareable URL like https://user.github.io/repo/#d=...
+function buildShareUrl(text){
+  var encoded = b64urlEncodeUtf8(text);
+  var base = location.origin + location.pathname;
+  return base + "#d=" + encoded;
+}
+
+// On load: if hash has #d=..., load it (and optionally auto-analyze)
+function tryLoadFromHash(autoAnalyze){
+  if(location.hash && location.hash.indexOf("#d=") === 0){
+    var data = location.hash.slice(3); // after "#d"
+    try{
+      var text = b64urlDecodeUtf8(data);
+      var area = document.getElementById("paste");
+      area.value = text;
+      if(autoAnalyze){ document.getElementById("analyze").click(); }
+      return true;
+    }catch(e){}
+  }
+  return false;
+}
+
+
   $("#analyze").addEventListener("click", analyze);
   $("#clear").addEventListener("click", function(){
     $("#paste").value=""; $("#output").innerHTML="";
     try{ localStorage.removeItem("tibia-loot-split-last"); }catch(e){}
   });
 
+  document.getElementById("share").addEventListener("click", function(){
+  var text = document.getElementById("paste").value || "";
+  if(!text.trim()){ toast("Nothing to share"); return; }
+  var url = buildShareUrl(text);
+  navigator.clipboard.writeText(url).then(function(){ toast("Share link copied"); });
+});
+
+// On first load: if hash contains data, load and auto-analyze
+tryLoadFromHash(true);
+
+
   try{
     var last = localStorage.getItem("tibia-loot-split-last");
     if(last) $("#paste").value = last;
   }catch(e){}
 })();
+
+  
 </script>
 </body>
 </html>
