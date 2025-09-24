@@ -1,573 +1,604 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tibia Loot Split — Multi-Session</title>
-  <style>
-    :root{
-      --bg:#0b0f14; --panel:#0f1520; --muted:#a9b1bb; --text:#e6edf3; --accent:#38bdf8; --good:#22c55e; --bad:#ef4444; --warn:#f59e0b; --border:#243042;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
-    h1{font-weight:700;margin:16px 0 8px;font-size:20px}
-    .container{max-width:1100px;margin:0 auto;padding:16px}
-    .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
-    textarea{width:100%;min-height:220px;background:#0b1220;border:1px solid var(--border);border-radius:12px;color:var(--text);padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-    .row{display:flex;gap:12px;flex-wrap:wrap}
-    .row > *{flex:1}
-    button{background:linear-gradient(180deg,#1e293b,#0b1220);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:12px;cursor:pointer}
-    button:hover{border-color:#3b82f6}
-    .btn-accent{background:linear-gradient(180deg,#06b6d4,#0284c7);border-color:transparent}
-    .btn-ghost{background:transparent;border:1px dashed var(--border)}
-    .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    .muted{color:var(--muted)}
-    .grid{display:grid;gap:10px}
-    .grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
-    .grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
-    .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:#0b1220;color:var(--muted);font-size:12px}
-    table{width:100%;border-collapse:collapse;background:#0b1220;border:1px solid var(--border);border-radius:12px;overflow:hidden}
-    th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:right}
-    th:first-child, td:first-child{text-align:left}
-    thead th{position:sticky;top:0;background:#0d1422;z-index:1}
-    .good{color:var(--good)}
-    .bad{color:var(--bad)}
-    .warn{color:var(--warn)}
-    .notice{padding:10px 12px;border-left:4px solid var(--warn);background:#1a1420;border-radius:10px}
-    .footer{opacity:.7;margin-top:18px}
-    .small{font-size:12px}
-    .right{float:right}
-    .nowrap{white-space:nowrap}
-    .spacer{height:8px}
-    .hl{background:rgba(56,189,248,.1);padding:2px 6px;border:1px solid rgba(56,189,248,.25);border-radius:8px}
-    .copybtn{padding:4px 8px;border-radius:8px;border:1px solid var(--border);background:#0b1220;cursor:pointer}
-    .copybtn:hover{border-color:#3b82f6}
-    .tx-amount{font-weight:600}
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>🗡️ Tibia Loot Split — Multi-Session</h1>
-    <div class="muted">Paste one or more Hunt Analyzer blocks. I will split each session fairly among participants in that session, then consolidate transfers across sessions.</div>
-    <div class="spacer"></div>
-
-    <div class="card">
-      <div class="toolbar">
-        <button id="analyze" class="btn-accent">Analyze</button>
-        <button id="clear" class="btn-ghost">Clear</button>
-        <button id="share" class="btn-ghost">Share Analyzer</button>
-        <span class="pill">Version 1.3</span>
+   <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Tibia Loot Split — Multi-Session</title>
+      <style>
+         :root{
+         --bg:#0b0f14; --panel:#0f1520; --muted:#a9b1bb; --text:#e6edf3; --accent:#38bdf8; --good:#22c55e; --bad:#ef4444; --warn:#f59e0b; --border:#243042;
+         }
+         *{box-sizing:border-box}
+         body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+         h1{font-weight:700;margin:16px 0 8px;font-size:20px}
+         .container{max-width:1100px;margin:0 auto;padding:16px}
+         .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+         textarea{width:100%;min-height:220px;background:#0b1220;border:1px solid var(--border);border-radius:12px;color:var(--text);padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+         .row{display:flex;gap:12px;flex-wrap:wrap}
+         .row > *{flex:1}
+         button{background:linear-gradient(180deg,#1e293b,#0b1220);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:12px;cursor:pointer}
+         button:hover{border-color:#3b82f6}
+         .btn-accent{background:linear-gradient(180deg,#06b6d4,#0284c7);border-color:transparent}
+         .btn-ghost{background:transparent;border:1px dashed var(--border)}
+         .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+         .muted{color:var(--muted)}
+         .grid{display:grid;gap:10px}
+         .grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+         .grid.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+         .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--border);background:#0b1220;color:var(--muted);font-size:12px}
+         table{width:100%;border-collapse:collapse;background:#0b1220;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+         th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:right}
+         th:first-child, td:first-child{text-align:left}
+         thead th{position:sticky;top:0;background:#0d1422;z-index:1}
+         .good{color:var(--good)}
+         .bad{color:var(--bad)}
+         .warn{color:var(--warn)}
+         .notice{padding:10px 12px;border-left:4px solid var(--warn);background:#1a1420;border-radius:10px}
+         .footer{opacity:.7;margin-top:18px}
+         .small{font-size:12px}
+         .right{float:right}
+         .nowrap{white-space:nowrap}
+         .spacer{height:8px}
+         .hl{background:rgba(56,189,248,.1);padding:2px 6px;border:1px solid rgba(56,189,248,.25);border-radius:8px}
+         .copybtn{padding:4px 8px;border-radius:8px;border:1px solid var(--border);background:#0b1220;cursor:pointer}
+         .copybtn:hover{border-color:#3b82f6}
+         .tx-amount{font-weight:600}
+      </style>
+   </head>
+   <body>
+      <div class="container">
+         <h1>🗡️ Tibia Loot Split — Multi-Session</h1>
+         <div class="muted">Paste one or more Hunt Analyzer blocks. I will split each session fairly among participants in that session, then consolidate transfers across sessions.</div>
+         <div class="spacer"></div>
+         <div class="card">
+            <div class="toolbar">
+               <button id="analyze" class="btn-accent">Analyze</button>
+               <button id="clear" class="btn-ghost">Clear</button>
+               <button id="share" class="btn-ghost">Share Analyzer</button>
+               <span class="pill">Version 1.3</span>
+            </div>
+            <div class="spacer"></div>
+            <textarea id="paste" placeholder="Paste multiple sessions here..."></textarea>
+         </div>
+         <div id="output" class="grid" style="margin-top:12px; gap:12px"></div>
+         <div class="footer small muted">
+            Settlement is computed <b>per session</b> (only among players present), then <b>consolidated</b> so each payer→receiver pair appears once across all sessions.
+         </div>
       </div>
-      <div class="spacer"></div>
-      <textarea id="paste" placeholder="Paste multiple sessions here..."></textarea>
-    </div>
-
-    <div id="output" class="grid" style="margin-top:12px; gap:12px"></div>
-
-    <div class="footer small muted">
-      Settlement is computed <b>per session</b> (only among players present), then <b>consolidated</b> so each payer→receiver pair appears once across all sessions.
-    </div>
-  </div>
-
-  <script>
-(function(){
-  // --- helpers ---
-  function $(sel){ return document.querySelector(sel); }
-  function $all(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
-  function by(k,dir){ if(dir===void 0) dir=1; return function(a,b){ if(a[k]===b[k]) return 0; return a[k]>b[k]?dir:-dir; }; }
-  function num(s){
-    if(s==null) return 0;
-    var m = String(s).replace(/[^0-9\-]/g, "");
-    if(!m || m === "-") return 0;
-    return parseInt(m,10);
-  }
-  function fmt(n){ return Number(n||0).toLocaleString("en-US"); }
-  function fmtDps(n){ return Number(n||0).toLocaleString("en-US", { maximumFractionDigits: 1 }); }
-  function fmtPlain(n){ return String(Math.round(n||0)); }
-  function durToHours(hstr){
-    if(!hstr) return 0;
-    var m = String(hstr).match(/(\d{1,2}):(\d{2})/);
-    if(!m) return 0;
-    var hh = parseInt(m[1],10)||0; var mm = parseInt(m[2],10)||0;
-    return hh + mm/60;
-  }
-  function escapeHtml(s){
-    return String(s).replace(/[&<>\"']/g, function(c){
-      return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];
-    });
-  }
-  function escapeAttr(s){
-    return String(s).replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-  }
-  function toast(msg){
-    var t = document.createElement("div");
-    t.textContent = msg;
-    var st = t.style;
-    st.position = "fixed"; st.bottom = "16px"; st.right = "16px";
-    st.padding = "10px 12px"; st.background = "#0d1422"; st.border = "1px solid #284166";
-    st.borderRadius = "10px"; st.boxShadow = "0 10px 24px rgba(0,0,0,.35)"; st.zIndex = 9999;
-    document.body.appendChild(t);
-    setTimeout(function(){ try{ t.remove(); }catch(e){} }, 1400);
-  }
-  function copyCSV(rows){
-    var csv = rows.map(function(r){
-      return r.map(function(v){
-        var s = (v==null?"":String(v));
-        return /[",\n]/.test(s) ? "\"" + s.replace(/"/g,'""') + "\"" : s;
-      }).join(",");
-    }).join("\n");
-    navigator.clipboard.writeText(csv).then(function(){ toast("Copied CSV!"); });
-  }
-
-  // --- parsing ---
-  function splitSessions(raw){
-    var blocks = [], regex = /Session data:[\s\S]*?(?=\n\s*Session data:|\u0000|$)/g, m;
-    while((m = regex.exec(raw))){ blocks.push(m[0].trim()); }
-    return blocks;
-  }
-  function parseSession(text, index){
-    var lines = text.split(/\r?\n/).map(function(l){ return l.replace(/\t/g,"  "); });
-    var session = { index:index, from:null, to:null, durationHours:0, lootType:null,
-      group:{loot:0,supplies:0,balance:0}, players:[], warnings:[], tx:[] };
-
-    var mDates = text.match(/Session data:\s*From\s*(.*?)\s*to\s*(.*)/i);
-    if(mDates){ session.from = mDates[1].trim(); session.to = mDates[2].split(/\r?\n/)[0].trim(); }
-    var mDur = text.match(/\bSession:\s*([0-9]{1,2}:[0-9]{2})h/i);
-    if(mDur){ session.durationHours = durToHours(mDur[1]); }
-    var mLootType = text.match(/Loot Type:\s*([^\r\n]+)/i);
-    if(mLootType){ session.lootType = mLootType[1].trim(); }
-
-    var mGroupLoot = text.match(/\n\s*Loot:\s*([\d,\.]+)/);
-    var mGroupSupp = text.match(/\n\s*Supplies:\s*([\d,\.]+)/);
-    var mGroupBal  = text.match(/\n\s*Balance:\s*([\-\d,\.]+)/);
-    if(mGroupLoot) session.group.loot = num(mGroupLoot[1]);
-    if(mGroupSupp) session.group.supplies = num(mGroupSupp[1]);
-    if(mGroupBal)  session.group.balance = num(mGroupBal[1]);
-
-    var headerWords = /^(Session data:|Session:|Loot Type:|Loot:|Supplies:|Balance:|Damage:|Healing:)/i;
-    var i=0;
-    while(i<lines.length){
-      var line = lines[i].trimEnd ? lines[i].trimEnd() : lines[i].replace(/\s+$/,"");
-      var raw = lines[i];
-      if(raw && !/^\s/.test(raw) && !headerWords.test(line)){
-        var name = line.trim().replace(/\s*\(Leader\)\s*$/i,"");
-        var displayName = name;
-        var p = { key:name, displayName:displayName, loot:0,supplies:0,balance:0,damage:0,healing:0 };
-        i++;
-        while(i<lines.length && /^\s/.test(lines[i])){
-          var sub = lines[i].trim();
-          var parts = sub.split(/:\s*/);
-          var k = parts[0] || "";
-          var v = parts.slice(1).join(": ");
-          if(/Loot/i.test(k)) p.loot = num(v);
-          else if(/Supplies/i.test(k)) p.supplies = num(v);
-          else if(/Balance/i.test(k)) p.balance = num(v);
-          else if(/Damage/i.test(k)) p.damage = num(v);
-          else if(/Healing/i.test(k)) p.healing = num(v);
-          i++;
-        }
-        session.players.push(p);
-        continue;
-      }
-      i++;
-    }
-
-    var sumBalances = session.players.reduce(function(a,b){ return a + (b.balance||0); }, 0);
-    if(session.group.balance && Math.abs(sumBalances - session.group.balance) > 5){
-      session.warnings.push("Sum of player balances ("+fmt(sumBalances)+") differs from group Balance ("+fmt(session.group.balance)+")");
-    }
-    return session;
-  }
-
-  // --- aggregation (for summary table only) ---
-  function aggregate(sessions){
-    var agg = new Map();
-    var presenceHours = new Map();
-    function byKey(key){
-      if(!agg.has(key)) agg.set(key, { key:key, displayName:key, totalBalance:0, totalLoot:0, totalSupplies:0, totalDamage:0, totalHealing:0, sessions:0 });
-      return agg.get(key);
-    }
-    sessions.forEach(function(s){
-      s.players.forEach(function(p){
-        var a = byKey(p.key);
-        a.displayName = p.displayName;
-        a.totalBalance += p.balance||0;
-        a.totalLoot += p.loot||0;
-        a.totalSupplies += p.supplies||0;
-        a.totalDamage += p.damage||0;
-        a.totalHealing += p.healing||0;
-        a.sessions += 1;
-        presenceHours.set(p.key, (presenceHours.get(p.key)||0) + (s.durationHours||0));
-      });
-    });
-    var rows = Array.from(agg.values()).map(function(r){
-      var hours = presenceHours.get(r.key)||0;
-      return Object.assign({}, r, {
-        hours: hours,
-        perHour: hours>0 ? r.totalBalance / hours : 0,
-        dps: hours>0 ? (r.totalDamage / (hours * 3600)) : 0
-      });
-    }).sort(function(a,b){ var d=b.totalBalance-a.totalBalance; return d!==0?d:a.displayName.localeCompare(b.displayName); });
-    return { rows:rows, presenceHours:presenceHours };
-  }
-
-  // --- per-session equalization (only among present players) ---
-  function settleSessionEqualized(players){
-    var total = players.reduce(function(a,b){ return a + (b.balance||0); }, 0);
-    var n = players.length || 1;
-    var avg = total / n;
-
-    var payers = [], receivers = [];
-    players.forEach(function(p){
-      var diff = Math.round((p.balance||0) - avg);
-      if(diff>0) payers.push({ name:p.displayName, amt: diff });
-      else if(diff<0) receivers.push({ name:p.displayName, amt: -diff });
-    });
-    payers.sort(function(a,b){ return b.amt-a.amt; });
-    receivers.sort(function(a,b){ return b.amt-a.amt; });
-
-    var tx = [], pi=0, ri=0;
-    while(pi<payers.length && ri<receivers.length){
-      var P = payers[pi], R = receivers[ri];
-      var pay = Math.min(P.amt, R.amt);
-      if(pay>0){
-        tx.push({ from:P.name, to:R.name, amount:pay });
-        P.amt -= pay; R.amt -= pay;
-      }
-      if(P.amt<=0) pi++;
-      if(R.amt<=0) ri++;
-    }
-
-    var residue = Math.round(players.reduce(function(a,b){ return a + Math.round((b.balance||0) - avg); },0));
-    return { tx:tx, residue:residue, avg:avg };
-  }
-
-  // --- consolidate all transfers across sessions ---
-  function consolidateTransfers(allTx){
-    var map = new Map();
-    allTx.forEach(function(t){
-      var key = t.from + "|" + t.to;
-      map.set(key, (map.get(key)||0) + t.amount);
-    });
-    return Array.from(map.entries()).map(function(ent){
-      var key = ent[0], amount = ent[1];
-      var parts = key.split("|");
-      return { from:parts[0], to:parts[1], amount:amount };
-    }).sort(function(a,b){ return b.amount - a.amount; });
-  }
-
-  // --- rendering (ASCII-only strings, no backticks) ---
-  function render(sessions, agg, allTx, consolidated){
-    var out = $("#output");
-    out.innerHTML = "";
-
-    var totalSessions = sessions.length;
-    var totalHours = sessions.reduce(function(a,b){ return a + (b.durationHours||0); }, 0);
-    var totalGroupBalance = sessions.reduce(function(a,b){ return a + (b.group.balance||0); }, 0);
-    var sumCheck = agg.rows.reduce(function(a,b){ return a + b.totalBalance; }, 0);
-    var warnSum = Math.abs(sumCheck - totalGroupBalance) > 5;
-
-    var summary = document.createElement("div");
-    summary.className = "card";
-    var summaryHtml = ""
-      + "<div class=\"row\">"
-      +   "<div><div class=\"muted\">Sessions</div><div style=\"font-size:22px;font-weight:700\">" + totalSessions + "</div></div>"
-      +   "<div><div class=\"muted\">Total Hours</div><div style=\"font-size:22px;font-weight:700\">" + totalHours.toFixed(2) + "</div></div>"
-      +   "<div><div class=\"muted\">Group Balance (sum)</div><div style=\"font-size:22px;font-weight:700\" class=\"" + (totalGroupBalance>=0?"good":"bad") + "\">" + fmt(totalGroupBalance) + "</div></div>"
-      +   "<div><div class=\"muted\">Net (from players)</div><div style=\"font-size:22px;font-weight:700\" class=\"" + (warnSum?"warn":"") + "\">" + fmt(Math.round(sumCheck)) + "</div></div>"
-      +   "<div><div class=\"muted\">Players (unique)</div><div style=\"font-size:22px;font-weight:700\">" + agg.rows.length + "</div></div>"
-      + "</div>";
-    if(warnSum){
-      summaryHtml += "<div class=\"spacer\"></div><div class=\"notice\">Heads up: Sum of players (" + fmt(Math.round(sumCheck)) + ") != sum of session balances (" + fmt(totalGroupBalance) + "). I used player balances for settlement.</div>";
-    }
-    summary.innerHTML = summaryHtml;
-    out.appendChild(summary);
-
-    // Aggregated table (now includes DPS)
-    var per = document.createElement("div");
-    per.className = "card";
-    per.innerHTML = "<div class=\"toolbar\"><strong>Aggregated — per person</strong><span class=\"muted\">(across all sessions)</span><span class=\"right small\"><button id=\"copy-agg\">Copy CSV</button></span></div>";
-    var tbl = document.createElement("table");
-    var bodyRows = agg.rows.map(function(r){
-      return ""
-        + "<tr>"
-        +   "<td>" + escapeHtml(r.displayName) + "</td>"
-        +   "<td>" + r.sessions + "</td>"
-        +   "<td>" + r.hours.toFixed(2) + "</td>"
-        +   "<td>" + fmt(r.totalLoot) + "</td>"
-        +   "<td>" + fmt(r.totalSupplies) + "</td>"
-        +   "<td class=\"" + (r.totalBalance>=0?"good":"bad") + "\">" + fmt(r.totalBalance) + "</td>"
-        +   "<td>" + fmtDps(r.dps) + "</td>"
-        +   "<td class=\"" + (r.perHour>=0?"good":"bad") + "\">" + fmt(Math.round(r.perHour)) + "</td>"
-        + "</tr>";
-    }).join("");
-    tbl.innerHTML = ""
-      + "<thead><tr>"
-      + "<th>Player</th><th class=\"nowrap\">Sessions</th><th class=\"nowrap\">Hours</th>"
-      + "<th>Loot</th><th>Supplies</th><th>Balance</th><th>DPS</th><th>Per hour</th>"
-      + "</tr></thead>"
-      + "<tbody>" + bodyRows + "</tbody>";
-    per.appendChild(tbl);
-    out.appendChild(per);
-
-    per.querySelector("#copy-agg").addEventListener("click", function(){
-      var header = ["Player","Sessions","Hours","Loot","Supplies","Balance","DPS","PerHour"];
-      var rows = agg.rows.map(function(r){
-        return [r.displayName,r.sessions,r.hours.toFixed(2),r.totalLoot,r.totalSupplies,r.totalBalance,r.dps.toFixed(1),Math.round(r.perHour)];
-      });
-      copyCSV([header].concat(rows));
-    });
-
-    // Consolidated settlement
-    var set = document.createElement("div");
-    set.className = "card";
-    set.innerHTML = "<div class=\"toolbar\"><strong>Final Settlement — consolidated</strong><span class=\"muted\">Pairs summed across sessions</span><span class=\"right small\"><button id=\"copy-all-set\">Copy all</button></span></div>";
-    if(consolidated.length){
-      var t = document.createElement("table");
-      var rowsHtml = consolidated.map(function(ti){
-        return ""
-          + "<tr>"
-          +   "<td>" + escapeHtml(ti.from) + "</td>"
-          +   "<td>" + escapeHtml(ti.to) + "</td>"
-          +   "<td class=\"tx-amount\">" + fmt(ti.amount) + "</td>"
-          +   "<td><button class=\"copybtn\" data-to=\"" + escapeAttr(ti.to) + "\" data-amount=\"" + ti.amount + "\">Copy</button></td>"
-          + "</tr>";
-      }).join("");
-      t.innerHTML = "<thead><tr><th>From</th><th>To</th><th>Amount</th><th>Action</th></tr></thead><tbody>" + rowsHtml + "</tbody>";
-      set.appendChild(t);
-    } else {
-      set.innerHTML += "<div class=\"muted\">Nothing to settle — everyone is even.</div>";
-    }
-    out.appendChild(set);
-
-    var copyAllBtn = set.querySelector("#copy-all-set");
-    if(copyAllBtn){
-      copyAllBtn.addEventListener("click", function(){
-        var lines = consolidated.map(function(ti){ return "Transfer " + fmtPlain(ti.amount) + " to " + ti.to; });
-        navigator.clipboard.writeText(lines.join("\n")).then(function(){ toast("Copied all transfers"); });
-      });
-    }
-    set.addEventListener("click", function(ev){
-      var btn = ev.target && ev.target.closest ? ev.target.closest(".copybtn") : null;
-      if(!btn) return;
-      var amount = btn.getAttribute("data-amount");
-      var to = btn.getAttribute("data-to");
-      var line = "Transfer " + fmtPlain(amount) + " to " + to;
-      navigator.clipboard.writeText(line).then(function(){ toast("Copied: " + line); });
-    });
-
-    // Per-session cards (with DPS column)
-    sessions.forEach(function(s){
-      var card = document.createElement("div");
-      card.className = "card";
-      var title = "Session #" + String(s.index).padStart(2,"0") + " • " + (s.from?escapeHtml(s.from):"") + " \u2192 " + (s.to?escapeHtml(s.to):"") + " • " + s.durationHours.toFixed(2) + "h";
-      var top = "<div class=\"toolbar\"><strong>" + title + "</strong><span class=\"pill\">Loot Type: " + escapeHtml(s.lootType||"-") + "</span><span class=\"pill\">Group Bal: <span class=\"" + (s.group.balance>=0?"good":"bad") + "\">" + fmt(s.group.balance) + "</span></span></div>";
-      if(s.warnings.length){
-        for(var w=0; w<s.warnings.length; w++){
-          top += "<div class=\"spacer\"></div><div class=\"notice\">" + escapeHtml(s.warnings[w]) + "</div>";
-        }
-      }
-      var playersTbl = document.createElement("table");
-      var pRows = s.players.slice().sort(by("displayName")).map(function(p){
-        return ""
-          + "<tr>"
-          +   "<td>" + escapeHtml(p.displayName) + "</td>"
-          +   "<td>" + fmt(p.loot) + "</td>"
-          +   "<td>" + fmt(p.supplies) + "</td>"
-          +   "<td class=\"" + (p.balance>=0?"good":"bad") + "\">" + fmt(p.balance) + "</td>"
-          +   "<td>" + fmt(p.damage) + "</td>"
-          +   "<td>" + fmtDps(s.durationHours>0 ? (p.damage / (s.durationHours * 3600)) : 0) + "</td>"
-          +   "<td>" + fmt(p.healing) + "</td>"
-          + "</tr>";
-      }).join("");
-      playersTbl.innerHTML =
-        "<thead><tr><th>Player</th><th>Loot</th><th>Supplies</th><th>Balance</th><th>Damage</th><th>DPS</th><th>Healing</th></tr></thead>"
-        + "<tbody>" + pRows + "</tbody>";
-
-      card.innerHTML = top;
-      card.appendChild(playersTbl);
-
-      if(s.tx && s.tx.length){
-        var sec = document.createElement("div");
-        sec.style.marginTop = "8px";
-        sec.innerHTML = "<div class=\"toolbar\"><strong>Session settlement</strong><span class=\"muted\">Equalized among " + s.players.length + " players</span></div>";
-        var tt = document.createElement("table");
-        var txRows = s.tx.map(function(ti){
-          return ""
-            + "<tr>"
-            +   "<td>" + escapeHtml(ti.from) + "</td>"
-            +   "<td>" + escapeHtml(ti.to) + "</td>"
-            +   "<td class=\"tx-amount\">" + fmt(ti.amount) + "</td>"
-            +   "<td><button class=\"copybtn\" data-to=\"" + escapeAttr(ti.to) + "\" data-amount=\"" + ti.amount + "\">Copy</button></td>"
-            + "</tr>";
-        }).join("");
-        tt.innerHTML = "<thead><tr><th>From</th><th>To</th><th>Amount</th><th>Action</th></tr></thead><tbody>" + txRows + "</tbody>";
-        sec.appendChild(tt);
-        card.appendChild(sec);
-      }
-
-      out.appendChild(card);
-    });
-  }
-
-  // --- main flow ---
-  function analyze(){
-    var raw = $("#paste").value || "";
-    if(!raw.trim()){ toast("Paste some session data first"); return; }
-    var blocks = splitSessions(raw);
-    if(blocks.length===0){ toast("No sessions found"); return; }
-
-    var sessions = blocks.map(function(b,i){ return parseSession(b, i+1); });
-
-    // per-session settlement and gather all transfers
-    var allTx = [];
-    sessions.forEach(function(s){
-      var res = settleSessionEqualized(s.players);
-      s.tx = res.tx; s.settleAvg = res.avg; s.residue = res.residue;
-      Array.prototype.push.apply(allTx, res.tx);
-    });
-
-    var agg = aggregate(sessions);
-    var consolidated = consolidateTransfers(allTx);
-
-    render(sessions, agg, allTx, consolidated);
-
-    try{ localStorage.setItem("tibia-loot-split-last", raw); }catch(e){}
-  }
-
-  // ====== SHORTER SHARE LINKS: gzip + base64url (#g=), fallback to #d= ======
-  // Uint8Array <-> base64url
-  function b64urlFromU8(u8){
-    var CHUNK = 0x8000, i=0, len=u8.length, s="";
-    while(i < len){
-      var chunk = u8.subarray(i, Math.min(i+CHUNK, len));
-      s += String.fromCharCode.apply(null, chunk);
-      i += CHUNK;
-    }
-    var b64 = btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
-    return b64;
-  }
-  function u8FromB64url(b64u){
-    var b64 = b64u.replace(/-/g,"+").replace(/_/g,"/");
-    while(b64.length % 4) b64 += "=";
-    var bin = atob(b64), len=bin.length, u8=new Uint8Array(len);
-    for(var i=0;i<len;i++){ u8[i] = bin.charCodeAt(i); }
-    return u8;
-  }
-  function gzipAvailable(){
-    try{ return typeof CompressionStream !== "undefined" && typeof DecompressionStream !== "undefined"; }
-    catch(e){ return false; }
-  }
-  function gzipCompress(text){
-    if(!gzipAvailable()) return Promise.reject(new Error("gzip-not-available"));
-    var enc = new TextEncoder();
-    var cs = new CompressionStream("gzip");
-    var w = cs.writable.getWriter();
-    w.write(enc.encode(text));
-    w.close();
-    return new Response(cs.readable).arrayBuffer().then(function(buf){ return new Uint8Array(buf); });
-  }
-  function gzipDecompress(u8){
-    if(!gzipAvailable()) return Promise.reject(new Error("gzip-not-available"));
-    var ds = new DecompressionStream("gzip");
-    var w = ds.writable.getWriter();
-    w.write(u8);
-    w.close();
-    return new Response(ds.readable).arrayBuffer().then(function(buf){
-      return new TextDecoder().decode(new Uint8Array(buf));
-    });
-  }
-  // Legacy UTF-8 base64url (fallback)
-  function b64urlEncodeUtf8(str){
-    var utf8 = encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function(m,p){ return String.fromCharCode(parseInt(p,16)); });
-    var b64 = btoa(utf8);
-    return b64.replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
-  }
-  function b64urlDecodeUtf8(b64u){
-    var b64 = b64u.replace(/-/g,"+").replace(/_/g,"/");
-    while(b64.length % 4) b64 += "=";
-    var bin = atob(b64);
-    var esc = "";
-    for(var i=0;i<bin.length;i++){
-      var h = bin.charCodeAt(i).toString(16); if(h.length<2) h="0"+h;
-      esc += "%" + h.toUpperCase();
-    }
-    return decodeURIComponent(esc);
-  }
-
-  function buildShareUrl(text){
-    var base = location.origin + location.pathname;
-    if(gzipAvailable()){
-      return gzipCompress(text).then(function(u8){
-        return base + "#g=" + b64urlFromU8(u8);
-      }).catch(function(){
-        return base + "#d=" + b64urlEncodeUtf8(text);
-      });
-    }else{
-      return base + "#d=" + b64urlEncodeUtf8(text);
-    }
-  }
-
-  function tryLoadFromHash(autoAnalyze){
-    if(!location.hash) return false;
-    // Prefer #g=
-    if(location.hash.indexOf("#g=") === 0){
-      try{
-        var u8 = u8FromB64url(location.hash.slice(3));
-        return gzipDecompress(u8).then(function(text){
-          var area = document.getElementById("paste");
-          area.value = text;
-          if(autoAnalyze){ document.getElementById("analyze").click(); }
-          return true;
-        }).catch(function(){ return false; });
-      }catch(e){ /* fall through to #d= */ }
-    }
-    // Fallback #d=
-    if(location.hash.indexOf("#d=") === 0){
-      try{
-        var text2 = b64urlDecodeUtf8(location.hash.slice(3));
-        var area2 = document.getElementById("paste");
-        area2.value = text2;
-        if(autoAnalyze){ document.getElementById("analyze").click(); }
-        return true;
-      }catch(e2){}
-    }
-    return false;
-  }
-
-  // --- UI wiring ---
-  $("#analyze").addEventListener("click", analyze);
-  $("#clear").addEventListener("click", function(){
-    $("#paste").value=""; $("#output").innerHTML="";
-    try{ localStorage.removeItem("tibia-loot-split-last"); }catch(e){}
-  });
-
-  document.getElementById("share").addEventListener("click", function(){
-    var text = document.getElementById("paste").value || "";
-    if(!text.trim()){ toast("Nothing to share"); return; }
-    var p = buildShareUrl(text);
-    if(p && typeof p.then === "function"){
-      p.then(function(url){
-        navigator.clipboard.writeText(url).then(function(){ toast("Share link copied"); });
-      }).catch(function(){ toast("Failed to build share link"); });
-    }else{
-      navigator.clipboard.writeText(String(p)).then(function(){ toast("Share link copied"); });
-    }
-  });
-
-  // On first load: if hash contains data, load and auto-analyze
-  (function(){
-    var ok = tryLoadFromHash(true);
-    if(!ok){
-      try{
-        var last = localStorage.getItem("tibia-loot-split-last");
-        if(last) $("#paste").value = last;
-      }catch(e){}
-    }
-  })();
-})();
-</script>
-
-
-</body>
+      <script>
+         (function(){
+           // --- helpers ---
+           function $(sel){ return document.querySelector(sel); }
+           function $all(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+           function by(k,dir){ if(dir===void 0) dir=1; return function(a,b){ if(a[k]===b[k]) return 0; return a[k]>b[k]?dir:-dir; }; }
+           function num(s){
+             if(s==null) return 0;
+             var m = String(s).replace(/[^0-9\-]/g, "");
+             if(!m || m === "-") return 0;
+             return parseInt(m,10);
+           }
+           function fmt(n){ return Number(n||0).toLocaleString("en-US"); }
+           function fmtDps(n){ return Number(n||0).toLocaleString("en-US", { maximumFractionDigits: 1 }); }
+           function fmtPlain(n){ return String(Math.round(n||0)); }
+           function durToHours(hstr){
+             if(!hstr) return 0;
+             var m = String(hstr).match(/(\d{1,2}):(\d{2})/);
+             if(!m) return 0;
+             var hh = parseInt(m[1],10)||0; var mm = parseInt(m[2],10)||0;
+             return hh + mm/60;
+           }
+           function escapeHtml(s){
+             return String(s).replace(/[&<>\"']/g, function(c){
+               return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];
+             });
+           }
+           function escapeAttr(s){
+             return String(s).replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+           }
+           function toast(msg){
+             var t = document.createElement("div");
+             t.textContent = msg;
+             var st = t.style;
+             st.position = "fixed"; st.bottom = "16px"; st.right = "16px";
+             st.padding = "10px 12px"; st.background = "#0d1422"; st.border = "1px solid #284166";
+             st.borderRadius = "10px"; st.boxShadow = "0 10px 24px rgba(0,0,0,.35)"; st.zIndex = 9999;
+             document.body.appendChild(t);
+             setTimeout(function(){ try{ t.remove(); }catch(e){} }, 1400);
+           }
+           function copyCSV(rows){
+             var csv = rows.map(function(r){
+               return r.map(function(v){
+                 var s = (v==null?"":String(v));
+                 return /[",\n]/.test(s) ? "\"" + s.replace(/"/g,'""') + "\"" : s;
+               }).join(",");
+             }).join("\n");
+             navigator.clipboard.writeText(csv).then(function(){ toast("Copied CSV!"); });
+           }
+         
+           // --- parsing ---
+           function splitSessions(raw){
+             var blocks = [], regex = /Session data:[\s\S]*?(?=\n\s*Session data:|\u0000|$)/g, m;
+             while((m = regex.exec(raw))){ blocks.push(m[0].trim()); }
+             return blocks;
+           }
+           function parseSession(text, index){
+             var lines = text.split(/\r?\n/).map(function(l){ return l.replace(/\t/g,"  "); });
+             var session = { index:index, from:null, to:null, durationHours:0, lootType:null,
+               group:{loot:0,supplies:0,balance:0}, players:[], warnings:[], tx:[] };
+         
+             var mDates = text.match(/Session data:\s*From\s*(.*?)\s*to\s*(.*)/i);
+             if(mDates){ session.from = mDates[1].trim(); session.to = mDates[2].split(/\r?\n/)[0].trim(); }
+             var mDur = text.match(/\bSession:\s*([0-9]{1,2}:[0-9]{2})h/i);
+             if(mDur){ session.durationHours = durToHours(mDur[1]); }
+             var mLootType = text.match(/Loot Type:\s*([^\r\n]+)/i);
+             if(mLootType){ session.lootType = mLootType[1].trim(); }
+         
+             var mGroupLoot = text.match(/\n\s*Loot:\s*([\d,\.]+)/);
+             var mGroupSupp = text.match(/\n\s*Supplies:\s*([\d,\.]+)/);
+             var mGroupBal  = text.match(/\n\s*Balance:\s*([\-\d,\.]+)/);
+             if(mGroupLoot) session.group.loot = num(mGroupLoot[1]);
+             if(mGroupSupp) session.group.supplies = num(mGroupSupp[1]);
+             if(mGroupBal)  session.group.balance = num(mGroupBal[1]);
+         
+             var headerWords = /^(Session data:|Session:|Loot Type:|Loot:|Supplies:|Balance:|Damage:|Healing:)/i;
+             var i=0;
+             while(i<lines.length){
+               var line = lines[i].trimEnd ? lines[i].trimEnd() : lines[i].replace(/\s+$/,"");
+               var raw = lines[i];
+               if(raw && !/^\s/.test(raw) && !headerWords.test(line)){
+                 var name = line.trim().replace(/\s*\(Leader\)\s*$/i,"");
+                 var displayName = name;
+                 var p = { key:name, displayName:displayName, loot:0,supplies:0,balance:0,damage:0,healing:0 };
+                 i++;
+                 while(i<lines.length && /^\s/.test(lines[i])){
+                   var sub = lines[i].trim();
+                   var parts = sub.split(/:\s*/);
+                   var k = parts[0] || "";
+                   var v = parts.slice(1).join(": ");
+                   if(/Loot/i.test(k)) p.loot = num(v);
+                   else if(/Supplies/i.test(k)) p.supplies = num(v);
+                   else if(/Balance/i.test(k)) p.balance = num(v);
+                   else if(/Damage/i.test(k)) p.damage = num(v);
+                   else if(/Healing/i.test(k)) p.healing = num(v);
+                   i++;
+                 }
+                 session.players.push(p);
+                 continue;
+               }
+               i++;
+             }
+         
+             var sumBalances = session.players.reduce(function(a,b){ return a + (b.balance||0); }, 0);
+             if(session.group.balance && Math.abs(sumBalances - session.group.balance) > 5){
+               session.warnings.push("Sum of player balances ("+fmt(sumBalances)+") differs from group Balance ("+fmt(session.group.balance)+")");
+             }
+             return session;
+           }
+         
+           // --- aggregation (for summary table only) ---
+           function aggregate(sessions){
+             var agg = new Map();
+             var presenceHours = new Map();
+             function byKey(key){
+               if(!agg.has(key)) agg.set(key, { key:key, displayName:key, totalBalance:0, totalLoot:0, totalSupplies:0, totalDamage:0, totalHealing:0, sessions:0 });
+               return agg.get(key);
+             }
+             sessions.forEach(function(s){
+               s.players.forEach(function(p){
+                 var a = byKey(p.key);
+                 a.displayName = p.displayName;
+                 a.totalBalance += p.balance||0;
+                 a.totalLoot += p.loot||0;
+                 a.totalSupplies += p.supplies||0;
+                 a.totalDamage += p.damage||0;
+                 a.totalHealing += p.healing||0;
+                 a.sessions += 1;
+                 presenceHours.set(p.key, (presenceHours.get(p.key)||0) + (s.durationHours||0));
+               });
+             });
+             var rows = Array.from(agg.values()).map(function(r){
+               var hours = presenceHours.get(r.key)||0;
+               return Object.assign({}, r, {
+                 hours: hours,
+                 perHour: hours>0 ? r.totalBalance / hours : 0,
+                 dps: hours>0 ? (r.totalDamage / (hours * 3600)) : 0
+               });
+             }).sort(function(a,b){ var d=b.totalBalance-a.totalBalance; return d!==0?d:a.displayName.localeCompare(b.displayName); });
+             return { rows:rows, presenceHours:presenceHours };
+           }
+         
+           // --- per-session equalization (only among present players) ---
+           function settleSessionEqualized(players){
+             var total = players.reduce(function(a,b){ return a + (b.balance||0); }, 0);
+             var n = players.length || 1;
+             var avg = total / n;
+         
+             var payers = [], receivers = [];
+             players.forEach(function(p){
+               var diff = Math.round((p.balance||0) - avg);
+               if(diff>0) payers.push({ name:p.displayName, amt: diff });
+               else if(diff<0) receivers.push({ name:p.displayName, amt: -diff });
+             });
+             payers.sort(function(a,b){ return b.amt-a.amt; });
+             receivers.sort(function(a,b){ return b.amt-a.amt; });
+         
+             var tx = [], pi=0, ri=0;
+             while(pi<payers.length && ri<receivers.length){
+               var P = payers[pi], R = receivers[ri];
+               var pay = Math.min(P.amt, R.amt);
+               if(pay>0){
+                 tx.push({ from:P.name, to:R.name, amount:pay });
+                 P.amt -= pay; R.amt -= pay;
+               }
+               if(P.amt<=0) pi++;
+               if(R.amt<=0) ri++;
+             }
+         
+             var residue = Math.round(players.reduce(function(a,b){ return a + Math.round((b.balance||0) - avg); },0));
+             return { tx:tx, residue:residue, avg:avg };
+           }
+         
+           // --- consolidate all transfers across sessions ---
+           function consolidateTransfers(allTx){
+             var map = new Map();
+             allTx.forEach(function(t){
+               var key = t.from + "|" + t.to;
+               map.set(key, (map.get(key)||0) + t.amount);
+             });
+             return Array.from(map.entries()).map(function(ent){
+               var key = ent[0], amount = ent[1];
+               var parts = key.split("|");
+               return { from:parts[0], to:parts[1], amount:amount };
+             }).sort(function(a,b){ return b.amount - a.amount; });
+           }
+         
+           // --- rendering (ASCII-only strings, no backticks) ---
+           function render(sessions, agg, allTx, consolidated){
+             var out = $("#output");
+             out.innerHTML = "";
+         
+             var totalSessions = sessions.length;
+             var totalHours = sessions.reduce(function(a,b){ return a + (b.durationHours||0); }, 0);
+             var totalGroupBalance = sessions.reduce(function(a,b){ return a + (b.group.balance||0); }, 0);
+             var sumCheck = agg.rows.reduce(function(a,b){ return a + b.totalBalance; }, 0);
+             var warnSum = Math.abs(sumCheck - totalGroupBalance) > 5;
+         
+             var summary = document.createElement("div");
+             summary.className = "card";
+             var summaryHtml = ""
+               + "<div class=\"row\">"
+               +   "<div><div class=\"muted\">Sessions</div><div style=\"font-size:22px;font-weight:700\">" + totalSessions + "</div></div>"
+               +   "<div><div class=\"muted\">Total Hours</div><div style=\"font-size:22px;font-weight:700\">" + totalHours.toFixed(2) + "</div></div>"
+               +   "<div><div class=\"muted\">Group Balance (sum)</div><div style=\"font-size:22px;font-weight:700\" class=\"" + (totalGroupBalance>=0?"good":"bad") + "\">" + fmt(totalGroupBalance) + "</div></div>"
+               +   "<div><div class=\"muted\">Net (from players)</div><div style=\"font-size:22px;font-weight:700\" class=\"" + (warnSum?"warn":"") + "\">" + fmt(Math.round(sumCheck)) + "</div></div>"
+               +   "<div><div class=\"muted\">Players (unique)</div><div style=\"font-size:22px;font-weight:700\">" + agg.rows.length + "</div></div>"
+               + "</div>";
+             if(warnSum){
+               summaryHtml += "<div class=\"spacer\"></div><div class=\"notice\">Heads up: Sum of players (" + fmt(Math.round(sumCheck)) + ") != sum of session balances (" + fmt(totalGroupBalance) + "). I used player balances for settlement.</div>";
+             }
+             summary.innerHTML = summaryHtml;
+             out.appendChild(summary);
+         
+             // Aggregated table (now includes DPS)
+             var per = document.createElement("div");
+             per.className = "card";
+             per.innerHTML = "<div class=\"toolbar\"><strong>Aggregated — per person</strong><span class=\"muted\">(across all sessions)</span><span class=\"right small\"><button id=\"copy-agg\">Copy CSV</button></span></div>";
+             var tbl = document.createElement("table");
+             var bodyRows = agg.rows.map(function(r){
+               return ""
+                 + "<tr>"
+                 +   "<td>" + escapeHtml(r.displayName) + "</td>"
+                 +   "<td>" + r.sessions + "</td>"
+                 +   "<td>" + r.hours.toFixed(2) + "</td>"
+                 +   "<td>" + fmt(r.totalLoot) + "</td>"
+                 +   "<td>" + fmt(r.totalSupplies) + "</td>"
+                 +   "<td class=\"" + (r.totalBalance>=0?"good":"bad") + "\">" + fmt(r.totalBalance) + "</td>"
+                 +   "<td>" + fmtDps(r.dps) + "</td>"
+                 +   "<td class=\"" + (r.perHour>=0?"good":"bad") + "\">" + fmt(Math.round(r.perHour)) + "</td>"
+                 + "</tr>";
+             }).join("");
+             tbl.innerHTML = ""
+               + "<thead><tr>"
+               + "<th>Player</th><th class=\"nowrap\">Sessions</th><th class=\"nowrap\">Hours</th>"
+               + "<th>Loot</th><th>Supplies</th><th>Balance</th><th>DPS</th><th>Per hour</th>"
+               + "</tr></thead>"
+               + "<tbody>" + bodyRows + "</tbody>";
+             per.appendChild(tbl);
+             out.appendChild(per);
+         
+             per.querySelector("#copy-agg").addEventListener("click", function(){
+               var header = ["Player","Sessions","Hours","Loot","Supplies","Balance","DPS","PerHour"];
+               var rows = agg.rows.map(function(r){
+                 return [r.displayName,r.sessions,r.hours.toFixed(2),r.totalLoot,r.totalSupplies,r.totalBalance,r.dps.toFixed(1),Math.round(r.perHour)];
+               });
+               copyCSV([header].concat(rows));
+             });
+         
+             // Consolidated settlement
+             var set = document.createElement("div");
+             set.className = "card";
+             set.innerHTML = "<div class=\"toolbar\"><strong>Final Settlement — consolidated</strong><span class=\"muted\">Pairs summed across sessions</span><span class=\"right small\"><button id=\"copy-all-set\">Copy all</button></span></div>";
+             if(consolidated.length){
+               var t = document.createElement("table");
+               var rowsHtml = consolidated.map(function(ti){
+                 return ""
+                   + "<tr>"
+                   +   "<td>" + escapeHtml(ti.from) + "</td>"
+                   +   "<td>" + escapeHtml(ti.to) + "</td>"
+                   +   "<td class=\"tx-amount\">" + fmt(ti.amount) + "</td>"
+                   +   "<td><button class=\"copybtn\" data-to=\"" + escapeAttr(ti.to) + "\" data-amount=\"" + ti.amount + "\">Copy</button></td>"
+                   + "</tr>";
+               }).join("");
+               t.innerHTML = "<thead><tr><th>From</th><th>To</th><th>Amount</th><th>Action</th></tr></thead><tbody>" + rowsHtml + "</tbody>";
+               set.appendChild(t);
+             } else {
+               set.innerHTML += "<div class=\"muted\">Nothing to settle — everyone is even.</div>";
+             }
+             out.appendChild(set);
+         
+             var copyAllBtn = set.querySelector("#copy-all-set");
+             if(copyAllBtn){
+               copyAllBtn.addEventListener("click", function(){
+                 var lines = consolidated.map(function(ti){ return "Transfer " + fmtPlain(ti.amount) + " to " + ti.to; });
+                 navigator.clipboard.writeText(lines.join("\n")).then(function(){ toast("Copied all transfers"); });
+               });
+             }
+             set.addEventListener("click", function(ev){
+               var btn = ev.target && ev.target.closest ? ev.target.closest(".copybtn") : null;
+               if(!btn) return;
+               var amount = btn.getAttribute("data-amount");
+               var to = btn.getAttribute("data-to");
+               var line = "Transfer " + fmtPlain(amount) + " to " + to;
+               navigator.clipboard.writeText(line).then(function(){ toast("Copied: " + line); });
+             });
+         
+             // Per-session cards (with DPS column)
+             sessions.forEach(function(s){
+               var card = document.createElement("div");
+               card.className = "card";
+               var title = "Session #" + String(s.index).padStart(2,"0") + " • " + (s.from?escapeHtml(s.from):"") + " \u2192 " + (s.to?escapeHtml(s.to):"") + " • " + s.durationHours.toFixed(2) + "h";
+               var top = "<div class=\"toolbar\"><strong>" + title + "</strong><span class=\"pill\">Loot Type: " + escapeHtml(s.lootType||"-") + "</span><span class=\"pill\">Group Bal: <span class=\"" + (s.group.balance>=0?"good":"bad") + "\">" + fmt(s.group.balance) + "</span></span></div>";
+               if(s.warnings.length){
+                 for(var w=0; w<s.warnings.length; w++){
+                   top += "<div class=\"spacer\"></div><div class=\"notice\">" + escapeHtml(s.warnings[w]) + "</div>";
+                 }
+               }
+               var playersTbl = document.createElement("table");
+               var pRows = s.players.slice().sort(by("displayName")).map(function(p){
+                 return ""
+                   + "<tr>"
+                   +   "<td>" + escapeHtml(p.displayName) + "</td>"
+                   +   "<td>" + fmt(p.loot) + "</td>"
+                   +   "<td>" + fmt(p.supplies) + "</td>"
+                   +   "<td class=\"" + (p.balance>=0?"good":"bad") + "\">" + fmt(p.balance) + "</td>"
+                   +   "<td>" + fmt(p.damage) + "</td>"
+                   +   "<td>" + fmtDps(s.durationHours>0 ? (p.damage / (s.durationHours * 3600)) : 0) + "</td>"
+                   +   "<td>" + fmt(p.healing) + "</td>"
+                   + "</tr>";
+               }).join("");
+               playersTbl.innerHTML =
+                 "<thead><tr><th>Player</th><th>Loot</th><th>Supplies</th><th>Balance</th><th>Damage</th><th>DPS</th><th>Healing</th></tr></thead>"
+                 + "<tbody>" + pRows + "</tbody>";
+         
+               card.innerHTML = top;
+               card.appendChild(playersTbl);
+         
+               if(s.tx && s.tx.length){
+                 var sec = document.createElement("div");
+                 sec.style.marginTop = "8px";
+                 sec.innerHTML = "<div class=\"toolbar\"><strong>Session settlement</strong><span class=\"muted\">Equalized among " + s.players.length + " players</span></div>";
+                 var tt = document.createElement("table");
+                 var txRows = s.tx.map(function(ti){
+                   return ""
+                     + "<tr>"
+                     +   "<td>" + escapeHtml(ti.from) + "</td>"
+                     +   "<td>" + escapeHtml(ti.to) + "</td>"
+                     +   "<td class=\"tx-amount\">" + fmt(ti.amount) + "</td>"
+                     +   "<td><button class=\"copybtn\" data-to=\"" + escapeAttr(ti.to) + "\" data-amount=\"" + ti.amount + "\">Copy</button></td>"
+                     + "</tr>";
+                 }).join("");
+                 tt.innerHTML = "<thead><tr><th>From</th><th>To</th><th>Amount</th><th>Action</th></tr></thead><tbody>" + txRows + "</tbody>";
+                 sec.appendChild(tt);
+                 card.appendChild(sec);
+               }
+         
+               out.appendChild(card);
+             });
+           }
+         
+           // --- main flow ---
+           function analyze(){
+             var raw = $("#paste").value || "";
+             if(!raw.trim()){ toast("Paste some session data first"); return; }
+             var blocks = splitSessions(raw);
+             if(blocks.length===0){ toast("No sessions found"); return; }
+         
+             var sessions = blocks.map(function(b,i){ return parseSession(b, i+1); });
+         
+             // per-session settlement and gather all transfers
+             var allTx = [];
+             sessions.forEach(function(s){
+               var res = settleSessionEqualized(s.players);
+               s.tx = res.tx; s.settleAvg = res.avg; s.residue = res.residue;
+               Array.prototype.push.apply(allTx, res.tx);
+             });
+         
+             var agg = aggregate(sessions);
+             var consolidated = consolidateTransfers(allTx);
+         
+             render(sessions, agg, allTx, consolidated);
+         
+             try{ localStorage.setItem("tibia-loot-split-last", raw); }catch(e){}
+           }
+         
+         
+         // ====== SHORTEST SHARE LINKS: deflate (#z=) or gzip (#g=), fallback to base64url (#d=) ======
+         
+         // Pre-minify (safe for your parser): normalize newlines, drop trailing spaces, collapse extra blanks
+         function prepareForEncode(text){
+           // CRLF/CR -> LF
+           var t = String(text).replace(/\r\n?/g, "\n");
+           // trim spaces/tabs at end of lines
+           t = t.replace(/[ \t]+\n/g, "\n");
+           // collapse 3+ blank lines into 2
+           t = t.replace(/\n{3,}/g, "\n\n");
+           return t;
+         }
+         
+         // Uint8Array <-> base64url
+         function b64urlFromU8(u8){
+           var CHUNK = 0x8000, i=0, len=u8.length, s="";
+           while(i < len){
+             var chunk = u8.subarray(i, Math.min(i+CHUNK, len));
+             s += String.fromCharCode.apply(null, chunk);
+             i += CHUNK;
+           }
+           return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+         }
+         function u8FromB64url(b64u){
+           var b64 = b64u.replace(/-/g,"+").replace(/_/g,"/");
+           while(b64.length % 4) b64 += "=";
+           var bin = atob(b64), len=bin.length, u8=new Uint8Array(len);
+           for(var i=0;i<len;i++){ u8[i] = bin.charCodeAt(i); }
+           return u8;
+         }
+         
+         // Streaming compression (if supported)
+         function streamsAvailable(){
+           try{ return typeof CompressionStream !== "undefined" && typeof DecompressionStream !== "undefined"; }
+           catch(e){ return false; }
+         }
+         function compressWith(type, text){ // type: "deflate" | "gzip"
+           var enc = new TextEncoder();
+           var cs = new CompressionStream(type);
+           var w = cs.writable.getWriter();
+           w.write(enc.encode(text));
+           w.close();
+           return new Response(cs.readable).arrayBuffer().then(function(buf){ return new Uint8Array(buf); });
+         }
+         function decompressWith(type, u8){
+           var ds = new DecompressionStream(type);
+           var w = ds.writable.getWriter();
+           w.write(u8);
+           w.close();
+           return new Response(ds.readable).arrayBuffer().then(function(buf){
+             return new TextDecoder().decode(new Uint8Array(buf));
+           });
+         }
+         
+         // Legacy UTF-8 base64url (fallback)
+         function b64urlEncodeUtf8(str){
+           var utf8 = encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function(m,p){ return String.fromCharCode(parseInt(p,16)); });
+           return btoa(utf8).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+         }
+         function b64urlDecodeUtf8(b64u){
+           var b64 = b64u.replace(/-/g,"+").replace(/_/g,"/");
+           while(b64.length % 4) b64 += "=";
+           var bin = atob(b64), esc="";
+           for(var i=0;i<bin.length;i++){
+             var h = bin.charCodeAt(i).toString(16); if(h.length<2) h="0"+h;
+             esc += "%" + h.toUpperCase();
+           }
+           return decodeURIComponent(esc);
+         }
+         
+         // Build the shortest share URL available
+         function buildShareUrl(text){
+           var base = location.origin + location.pathname;
+           var cleaned = prepareForEncode(text);
+         
+           if(!streamsAvailable()){
+             return base + "#d=" + b64urlEncodeUtf8(cleaned);
+           }
+         
+           // Try deflate and gzip; pick shorter; fall back to base64 if something fails
+           return Promise.allSettled([
+             compressWith("deflate", cleaned).then(function(u8){ return { tag:"#z=", data:b64urlFromU8(u8) }; }),
+             compressWith("gzip", cleaned).then(function(u8){ return { tag:"#g=", data:b64urlFromU8(u8) }; })
+           ]).then(function(results){
+             var candidates = [];
+             for(var i=0;i<results.length;i++){
+               if(results[i].status === "fulfilled"){
+                 var r = results[i].value;
+                 candidates.push(base + r.tag + r.data);
+               }
+             }
+             // Always include base64url as a fallback candidate
+             candidates.push(base + "#d=" + b64urlEncodeUtf8(cleaned));
+             // Return shortest
+             candidates.sort(function(a,b){ return a.length - b.length; });
+             return candidates[0];
+           }).catch(function(){
+             return base + "#d=" + b64urlEncodeUtf8(cleaned);
+           });
+         }
+         
+         // Auto-load from hash (supports #z=, #g=, #d=)
+         function tryLoadFromHash(autoAnalyze){
+           if(!location.hash) return false;
+         
+           function fillAndAnalyze(text){
+             var area = document.getElementById("paste");
+             area.value = text;
+             if(autoAnalyze){ document.getElementById("analyze").click(); }
+           }
+         
+           // deflate
+           if(location.hash.indexOf("#z=") === 0 && streamsAvailable()){
+             try{
+               var u8z = u8FromB64url(location.hash.slice(3));
+               return decompressWith("deflate", u8z).then(function(txt){ fillAndAnalyze(txt); return true; })
+                 .catch(function(){ /* fall through */ return false; });
+             }catch(e){ /* fall through */ }
+           }
+           // gzip
+           if(location.hash.indexOf("#g=") === 0 && streamsAvailable()){
+             try{
+               var u8g = u8FromB64url(location.hash.slice(3));
+               return decompressWith("gzip", u8g).then(function(txt){ fillAndAnalyze(txt); return true; })
+                 .catch(function(){ /* fall through */ return false; });
+             }catch(e){ /* fall through */ }
+           }
+           // base64
+           if(location.hash.indexOf("#d=") === 0){
+             try{ fillAndAnalyze(b64urlDecodeUtf8(location.hash.slice(3))); return true; }
+             catch(e2){ /* ignore */ }
+           }
+           return false;
+         }
+         
+         
+           // --- UI wiring ---
+           $("#analyze").addEventListener("click", analyze);
+           $("#clear").addEventListener("click", function(){
+             $("#paste").value=""; $("#output").innerHTML="";
+             try{ localStorage.removeItem("tibia-loot-split-last"); }catch(e){}
+           });
+         
+           document.getElementById("share").addEventListener("click", function(){
+             var text = document.getElementById("paste").value || "";
+             if(!text.trim()){ toast("Nothing to share"); return; }
+             var p = buildShareUrl(text);
+             if(p && typeof p.then === "function"){
+               p.then(function(url){
+                 navigator.clipboard.writeText(url).then(function(){ toast("Share link copied"); });
+               }).catch(function(){ toast("Failed to build share link"); });
+             }else{
+               navigator.clipboard.writeText(String(p)).then(function(){ toast("Share link copied"); });
+             }
+           });
+         
+           // On first load: if hash contains data, load and auto-analyze
+           (function(){
+             var ok = tryLoadFromHash(true);
+             if(!ok){
+               try{
+                 var last = localStorage.getItem("tibia-loot-split-last");
+                 if(last) $("#paste").value = last;
+               }catch(e){}
+             }
+           })();
+         })();
+      </script>
+   </body>
 </html>
