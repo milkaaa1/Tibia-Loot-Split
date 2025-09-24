@@ -81,6 +81,10 @@
     if(!m || m === "-") return 0;
     return parseInt(m,10);
   }
+  function fmtDps(n){
+    return Number(n||0).toLocaleString("en-US", { maximumFractionDigits: 1 });
+  }
+
   function fmt(n){ return Number(n||0).toLocaleString("en-US"); }
   function fmtPlain(n){ return String(Math.round(n||0)); }
   function durToHours(hstr){
@@ -201,7 +205,12 @@
     });
     var rows = Array.from(agg.values()).map(function(r){
       var hours = presenceHours.get(r.key)||0;
-      return Object.assign({}, r, { hours:hours, perHour: hours>0 ? r.totalBalance / hours : 0 });
+      return Object.assign({}, r, {
+        hours: hours,
+        perHour: hours>0 ? r.totalBalance / hours : 0,
+        dps: hours>0 ? (r.totalDamage / (hours * 3600)) : 0
+      });
+
     }).sort(function(a,b){ var d=b.totalBalance-a.totalBalance; return d!==0?d:a.displayName.localeCompare(b.displayName); });
     return { rows:rows, presenceHours:presenceHours };
   }
@@ -288,16 +297,17 @@
         +   "<td>" + escapeHtml(r.displayName) + "</td>"
         +   "<td>" + r.sessions + "</td>"
         +   "<td>" + r.hours.toFixed(2) + "</td>"
-        +   "<td>" + fmt(r.totalLoot) + "</td>"
+       +   "<td>" + fmt(r.totalLoot) + "</td>"
         +   "<td>" + fmt(r.totalSupplies) + "</td>"
         +   "<td class=\"" + (r.totalBalance>=0?"good":"bad") + "\">" + fmt(r.totalBalance) + "</td>"
+        +   "<td>" + fmtDps(r.dps) + "</td>"
         +   "<td class=\"" + (r.perHour>=0?"good":"bad") + "\">" + fmt(Math.round(r.perHour)) + "</td>"
         + "</tr>";
     }).join("");
     tbl.innerHTML = ""
       + "<thead><tr>"
       + "<th>Player</th><th class=\"nowrap\">Sessions</th><th class=\"nowrap\">Hours</th>"
-      + "<th>Loot</th><th>Supplies</th><th>Balance</th><th>Per hour</th>"
+      + "<th>Loot</th><th>Supplies</th><th>Balance</th><th>DPS</th><th>Per hour</th>"
       + "</tr></thead>"
       + "<tbody>" + bodyRows + "</tbody>";
     per.appendChild(tbl);
@@ -365,10 +375,12 @@
           +   "<td>" + fmt(p.supplies) + "</td>"
           +   "<td class=\"" + (p.balance>=0?"good":"bad") + "\">" + fmt(p.balance) + "</td>"
           +   "<td>" + fmt(p.damage) + "</td>"
+          +   "<td>" + fmtDps(s.durationHours>0 ? (p.damage / (s.durationHours * 3600)) : 0) + "</td>"
           +   "<td>" + fmt(p.healing) + "</td>"
+
           + "</tr>";
       }).join("");
-      playersTbl.innerHTML = "<thead><tr><th>Player</th><th>Loot</th><th>Supplies</th><th>Balance</th><th>Damage</th><th>Healing</th></tr></thead><tbody>" + pRows + "</tbody>";
+      playersTbl.innerHTML = ""<thead><tr><th>Player</th><th>Loot</th><th>Supplies</th><th>Balance</th><th>Damage</th><th>DPS</th><th>Healing</th></tr></thead>"<tbody>" + pRows + "</tbody>";
 
       card.innerHTML = top;
       card.appendChild(playersTbl);
